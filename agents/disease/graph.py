@@ -4,6 +4,23 @@ from agents.disease.mapper import disease_mapper
 from agents.disease.classifier import classifier_chain, disease_qa_chain
 from agents.disease.retriever import disease_retriever
 from services.disease_api import predict_disease_from_path
+import asyncio
+
+MAX_RETRIES = 3
+
+async def invoke_with_retry(chain, input_data, retries=MAX_RETRIES):
+    """Invoke an LLM chain with retry logic for transient Groq errors."""
+    for attempt in range(retries):
+        try:
+            return await chain.ainvoke(input_data)
+        except Exception as e:
+            error_str = str(e)
+            if attempt < retries - 1 and ("Tool choice" in error_str or "400" in error_str or "429" in error_str or "500" in error_str or "503" in error_str):
+                wait_time = 2 ** attempt
+                print(f"[RETRY] Disease agent attempt {attempt + 1}/{retries} failed: {error_str[:100]}. Retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
 
 async def decision_node(state: DiseaseState):
     """If image_path is present, get prediction from disease API."""
@@ -14,7 +31,7 @@ async def decision_node(state: DiseaseState):
         except Exception as e:
             print(f"Disease prediction failed: {e}")
             return {"prediction": None}
-    return {"prediction": None}
+    return {}
 
 def mapper_node(state: DiseaseState):
     """Map prediction to disease ID and crop."""
@@ -28,7 +45,7 @@ def mapper_node(state: DiseaseState):
 
 async def classifier_node(state: DiseaseState):
     """Classify the intents in the user's question."""
-    intents = await classifier_chain.ainvoke({"question": state["question"]})
+    intents = await invoke_with_retry(classifier_chain, {"question": state["question"]})
     return {"intents": intents.intents}
 
 def retriever_node(state: DiseaseState):
@@ -51,7 +68,7 @@ def retriever_node(state: DiseaseState):
 
 async def llm_node(state: DiseaseState):
     """Generate the final response."""
-    response = await disease_qa_chain.ainvoke({
+    response = await invoke_with_retry(disease_qa_chain, {
         "context": state.get("context", ""),
         "question": state["question"]
     })

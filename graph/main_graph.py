@@ -1,5 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from graph.state import MainAgentState
+from langchain_core.runnables import RunnableConfig
 from agents.supervisor.graph import supervisor_graph
 from agents.disease.graph import disease_graph
 from agents.crop.graph import crop_graph
@@ -10,8 +11,25 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
 from pydantic import BaseModel, Field
 import traceback
+import asyncio
 
 llm = init_chat_model("groq:openai/gpt-oss-120b")
+
+MAX_RETRIES = 3
+
+async def invoke_with_retry(chain, input_data, retries=MAX_RETRIES):
+    """Invoke an LLM chain with retry logic for transient Groq errors."""
+    for attempt in range(retries):
+        try:
+            return await chain.ainvoke(input_data)
+        except Exception as e:
+            error_str = str(e)
+            if attempt < retries - 1 and ("Tool choice" in error_str or "400" in error_str or "429" in error_str or "500" in error_str or "503" in error_str):
+                wait_time = 2 ** attempt
+                print(f"[RETRY] Main graph attempt {attempt + 1}/{retries} failed: {error_str[:100]}. Retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
 
 class CropParamsExtraction(BaseModel):
     N: float = Field(default=0.0)
@@ -24,7 +42,26 @@ class CropParamsExtraction(BaseModel):
 
 async def classify_and_route(state: MainAgentState):
     """Invoke the supervisor sub-graph to classify and route."""
-    sup_input = {"user_query": state["user_query"]}
+    messages = state.get("messages", [])
+    
+    # Format recent messages into a context string (excluding the current one)
+    # The current query is the last human message.
+    context = ""
+    if len(messages) > 1:
+        # Get up to the last 6 messages, excluding the very last one (which is the current query)
+        recent = messages[-7:-1]
+        context_parts = []
+        for msg in recent:
+            role = getattr(msg, "type", msg.get("role", "unknown") if isinstance(msg, dict) else "unknown")
+            content = getattr(msg, "content", msg.get("content", "") if isinstance(msg, dict) else "")
+            context_parts.append(f"{role.capitalize()}: {content}")
+        context = "\n".join(context_parts)
+    
+    sup_input = {
+        "user_query": state["user_query"],
+        "conversation_context": context,
+        "has_image": state.get("has_image", False)
+    }
     sup_result = await supervisor_graph.ainvoke(sup_input)
     
     selected = sup_result.get("selected_agents", [])
@@ -38,10 +75,12 @@ async def classify_and_route(state: MainAgentState):
         "guardrail_reason": sup_result.get("guardrail_reason"),
         "intent": sup_result.get("intent"),
         "tasks": sup_result.get("tasks", []),
-        "selected_agents": selected
+        "selected_agents": selected,
+        "agent_responses": {},
+        "final_response": None
     }
 
-async def run_agents(state: MainAgentState):
+async def run_agents(state: MainAgentState, config: RunnableConfig):
     """Execute the selected sub-agents."""
     selected_agents = state.get("selected_agents", [])
     is_valid = state.get("is_valid", True)
@@ -51,25 +90,46 @@ async def run_agents(state: MainAgentState):
     # If not valid, return rejection directly
     if not is_valid:
         reason = state.get("guardrail_reason", "Your query is not related to agriculture.")
+        rej_resp = f"I'm sorry, but I can only assist with agriculture-related questions. Reason: {reason}"
         return {
-            "final_response": f"I'm sorry, but I can only assist with agriculture-related questions. Reason: {reason}"
+            "final_response": rej_resp,
+            "messages": [("ai", rej_resp)]
         }
     
     if not selected_agents:
         return {"final_response": "No agents were selected to handle your query."}
     
     responses = {}
+    state_updates = {}
+    
+    # Extract image_path from config
+    configurable = config.get("configurable", {})
+    image_path = configurable.get("image_path")
     
     for agent in selected_agents:
         try:
             if agent == "disease_agent":
                 disease_input = {
                     "question": state.get("sanitized_query") or state["user_query"],
-                    "image_path": state.get("image_path")
+                    "image_path": image_path
                 }
+                
+                # Pass prior context if available and no new image
+                prior_disease = state.get("disease_result")
+                if not image_path and prior_disease and "prediction" in prior_disease:
+                    disease_input["prediction"] = prior_disease["prediction"]
+                    
                 print(f"[EXECUTOR] Calling disease_agent with: {disease_input}")
                 res = await disease_graph.ainvoke(disease_input)
                 responses["disease_agent"] = res.get("response", "Disease agent did not return a response.")
+                
+                # Save structured result
+                if res.get("prediction"):
+                    state_updates["disease_result"] = {
+                        "prediction": res.get("prediction"),
+                        "disease_id": res.get("disease_id"),
+                        "crop": res.get("crop")
+                    }
                 
             elif agent == "crop_agent":
                 prompt = ChatPromptTemplate.from_messages([
@@ -78,12 +138,26 @@ async def run_agents(state: MainAgentState):
                 ])
                 chain = prompt | llm.with_structured_output(CropParamsExtraction)
                 query_to_check = state.get("sanitized_query") or state["user_query"]
-                params = await chain.ainvoke({"query": query_to_check})
+                params = await invoke_with_retry(chain, {"query": query_to_check})
                 
                 crop_input = {"input_parameters": params.model_dump()}
+                
+                # Add prior crop result context to query
+                prior_crop = state.get("crop_result")
+                if prior_crop and prior_crop.get("recommended_crop"):
+                    # We inject the prior crop into the prompt implicitly by modifying query?
+                    pass # Actually crop_agent relies strictly on NPK input parameters for now.
+                    
                 print(f"[EXECUTOR] Calling crop_agent with: {crop_input}")
                 res = await crop_graph.ainvoke(crop_input)
                 responses["crop_agent"] = res.get("explanation", "Crop agent did not return a response.")
+                
+                # Save structured result
+                if res.get("recommended_crop"):
+                    state_updates["crop_result"] = {
+                        "recommended_crop": res.get("recommended_crop"),
+                        "derived_features": res.get("derived_features")
+                    }
                     
             elif agent == "general_agent":
                 general_input = {
@@ -98,7 +172,8 @@ async def run_agents(state: MainAgentState):
             responses[agent] = f"Agent error: {e}"
             
     print(f"[EXECUTOR] Collected responses from: {list(responses.keys())}")
-    return {"agent_responses": responses}
+    state_updates["agent_responses"] = responses
+    return state_updates
 
 async def format_response(state: MainAgentState):
     """Format the final response."""
@@ -114,7 +189,11 @@ async def format_response(state: MainAgentState):
     # Single agent - return directly
     if len(agent_responses) == 1:
         agent_name = list(agent_responses.keys())[0]
-        return {"final_response": agent_responses[agent_name]}
+        final_resp = agent_responses[agent_name]
+        return {
+            "final_response": final_resp,
+            "messages": [("ai", final_resp)]
+        }
 
     # Multiple agents - merge with LLM
     prompt = ChatPromptTemplate.from_messages([
@@ -129,12 +208,15 @@ Do not mention the names of the sub-agents."""),
     responses_text = "\n\n".join(f"[{name}]\n{response}" for name, response in agent_responses.items())
     
     chain = prompt | llm
-    result = await chain.ainvoke({
+    result = await invoke_with_retry(chain, {
         "query": state["user_query"],
         "responses": responses_text
     })
     
-    return {"final_response": result.content}
+    return {
+        "final_response": result.content,
+        "messages": [("ai", result.content)]
+    }
 
 # ==========================================
 # Main Orchestration Graph
@@ -151,4 +233,5 @@ builder.add_edge("classify", "run_agents")
 builder.add_edge("run_agents", "format")
 builder.add_edge("format", END)
 
-main_app = builder.compile()
+def build_main_graph(checkpointer=None):
+    return builder.compile(checkpointer=checkpointer)

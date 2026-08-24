@@ -1,11 +1,13 @@
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Request
 from typing import Optional
 
 chat_router = APIRouter()
 
 @chat_router.post("/chat", tags=["Chat"])
 async def chat_endpoint(
+    request: Request,
     query: str = Form(...),
+    session_id: str = Form(...),
     file: Optional[UploadFile] = File(None)
 ):
     """
@@ -15,7 +17,8 @@ async def chat_endpoint(
     import os
     import shutil
     import tempfile
-    from graph.main_graph import main_app
+    
+    graph = request.app.state.graph
 
     image_path = None
     print(f"Received query: {query}")
@@ -35,20 +38,34 @@ async def chat_endpoint(
             raise HTTPException(status_code=500, detail=f"Failed to process image: {e}")
 
     try:
+        # Validate session_id
+        session_id = session_id.strip()
+        if not session_id or len(session_id) > 255:
+            raise HTTPException(status_code=400, detail="Invalid session_id.")
+
         # Run the LangGraph application
         initial_state = {
             "user_query": query,
-            "image_path": image_path
+            "has_image": image_path is not None,
+            "messages": [("human", query)]
         }
         
-        result = await main_app.ainvoke(initial_state)
+        config = {
+            "configurable": {
+                "thread_id": session_id,
+                "image_path": image_path
+            }
+        }
+        
+        result = await graph.ainvoke(initial_state, config=config)
         
         final_response = result.get("final_response", "Failed to generate a response.")
         
         return {
             "status": "success",
             "query": query,
-            "response": final_response
+            "response": final_response,
+            "session_id": session_id
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Graph execution failed: {e}")

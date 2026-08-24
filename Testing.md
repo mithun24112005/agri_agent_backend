@@ -1,63 +1,104 @@
-# Testing Guide: Smart Agriculture Backend
+# Testing Guide: Session-Scoped Short-Term Memory
 
-This guide outlines the steps to test the backend API using Postman and how to monitor the AI agent executions in LangSmith.
+This guide outlines how to manually verify the new session memory features.
 
-I have already started the backend server for you in the background. It is running at `http://127.0.0.1:8001`.
+## 1. Start the Server
 
----
+```bash
+cd d:\agent_backend
+uv run uvicorn main:app --host 0.0.0.0 --port 8001
+```
 
-## 1. Testing with Postman
+## 2. Verify Health Check
 
-Since the `/chat` endpoint accepts both text and optional image uploads, it requires a `multipart/form-data` request.
+Run a `GET` request to `http://127.0.0.1:8001/health`
 
-### Setting up the Request
-1. Open Postman and create a new **POST** request.
-2. Set the URL to: `http://127.0.0.1:8001/chat`
-3. Go to the **Body** tab.
-4. Select **form-data**.
+**Expected Output:**
+```json
+{
+  "status": "ok",
+  "message": "Smart Agriculture Backend is healthy",
+  "memory": "available"
+}
+```
 
-### Test Case 1: Disease Agent (Text Only)
-*This tests the text-only disease RAG pipeline.*
-- Key: `query` (Type: Text) | Value: `What are the symptoms of apple scab?`
-- Click **Send**.
+## 3. Test Disease Follow-up (No Image)
 
-### Test Case 2: Disease Agent (With Image)
-*This tests the Disease ML API integration + RAG explanation.*
-- Key: `query` (Type: Text) | Value: `What is wrong with my plant?`
-- Key: `file` (Type: File) | Value: Select an infected leaf image from your computer. *(Ensure the key type is changed from Text to File by hovering over the key field).*
-- Click **Send**.
+### Turn 1: Upload image
+- **Method**: `POST`
+- **URL**: `http://127.0.0.1:8001/chat`
+- **Body**: `form-data`
+  - `query`: "What disease is this?"
+  - `session_id`: "test-session-123"
+  - `file`: Select a test leaf image
 
-### Test Case 3: Crop Recommendation Agent
-*This tests the feature extraction, Random Forest model, and agronomic reasoning.*
-- Key: `query` (Type: Text) | Value: `I have a field with Nitrogen 90, Phosphorus 42, Potassium 43. The temperature is 21C, humidity is 82%, pH is 6.5, and rainfall is 202mm. What crop should I grow?`
-- Click **Send**.
+**Expected:** The Disease Agent correctly identifies the disease and returns information.
 
-### Test Case 4: General Agent
-*This tests the Tavily web search integration and guardrails.*
-- Key: `query` (Type: Text) | Value: `What are some natural ways to improve soil fertility?`
-- Click **Send**.
+### Turn 2: Follow-up question (No Image)
+- **Method**: `POST`
+- **URL**: `http://127.0.0.1:8001/chat`
+- **Body**: `form-data`
+  - `query`: "What is the best chemical control for it?"
+  - `session_id`: "test-session-123"
+  - `file`: [Leave empty]
 
-### Test Case 5: Guardrail Rejection
-*This tests the PII and agriculture context guardrails.*
-- Key: `query` (Type: Text) | Value: `What is the capital of France?`
-- Click **Send**. You should receive a polite rejection explaining that the system only handles agricultural queries.
+**Expected:** The Supervisor recognizes "it" refers to the previously detected disease due to conversation history. The Disease Agent answers the question using the stored `disease_result` WITHOUT needing a new image upload.
 
----
+## 4. Test Crop Agent (State & Params)
 
-## 2. Monitoring with LangSmith
+- **Method**: `POST`
+- **URL**: `http://127.0.0.1:8001/chat`
+- **Body**: `form-data`
+  - `query`: "Recommend a crop for N=40 P=50 K=50 temperature=28 humidity=75 ph=6.5 rainfall=200"
+  - `session_id`: "test-session-123"
 
-Since you have added your LangSmith API key and tracing is enabled, every test you run in Postman will automatically be recorded in LangSmith.
+**Expected:** The Crop Agent parses the parameters correctly, returns a crop recommendation (e.g., Rice, Papaya), and provides an explanation.
 
-### How to view the traces:
-1. Log in to your LangSmith account at [smith.langchain.com](https://smith.langchain.com/).
-2. On the dashboard, look for the project named **`smart-agriculture`** (defined in your `.env`).
-3. Click on the project to view the **Traces** tab.
-4. You will see a chronological list of every request made to the `/chat` endpoint.
+## 5. Test Multi-Agent Routing (Mixed Queries)
 
-### What to look for in a Trace:
-- Click on any specific trace to see the **LangGraph Execution Flow**.
-- You will be able to see the exact steps taken by the orchestrator:
-  - **`call_supervisor`**: See how it classified the intent and selected the agent.
-  - **`execute_agents`**: See the input to the specific agent (e.g., the extracted parameters for the crop model or the image path).
-  - **LLM Calls**: You can expand the LLM nodes to see the exact prompt generated (including the Qdrant context or web search evidence) and the raw response from the Groq `llama-3.3-70b-versatile` model.
-  - **`response_node`**: See how the final output was formatted before being sent back to Postman.
+- **Method**: `POST`
+- **URL**: `http://127.0.0.1:8001/chat`
+- **Body**: `form-data`
+  - `query`: "Can you tell me the current market price of wheat in India, and also what crop should I plant if my soil has N=20, P=30, K=10, temperature is 22C, humidity is 60, ph is 7.0 and rainfall is 100?"
+  - `session_id`: "test-session-123"
+
+**Expected:** The Supervisor should classify intent as `multi_domain` and route to `['general_agent', 'crop_agent']`. The General Agent uses Tavily to fetch wheat prices, and the Crop Agent makes a recommendation based on the soil parameters. The final response should seamlessly combine both answers.
+
+## 6. Test Multi-Agent Routing (Disease + General)
+
+- **Method**: `POST`
+- **URL**: `http://127.0.0.1:8001/chat`
+- **Body**: `form-data`
+  - `query`: "What disease is this? Also, what are some general sustainable farming practices to prevent soil erosion?"
+  - `session_id`: "test-session-123"
+  - `file`: Select a test leaf image
+
+**Expected:** The Supervisor routes to `['disease_agent', 'general_agent']`. The response synthesizes the disease diagnosis (from the image) with the sustainable farming advice.
+
+## 7. Test Guardrail Rejection
+
+- **Method**: `POST`
+- **URL**: `http://127.0.0.1:8001/chat`
+- **Body**: `form-data`
+  - `query`: "What is the capital of France?"
+  - `session_id`: "test-session-123"
+
+**Expected:** The query should be rejected by the Guardrail with a message stating it can only assist with agriculture-related questions.
+
+## 8. Test Cross-Session Isolation
+
+- **Method**: `POST`
+- **URL**: `http://127.0.0.1:8001/chat`
+- **Body**: `form-data`
+  - `query`: "What was the chemical control you suggested earlier?"
+  - `session_id`: "different-session-456"
+  - `file`: [Leave empty]
+
+**Expected:** The agent should state it does not know what you are referring to or that the query lacks context, proving that memory is isolated to `test-session-123`.
+
+## 9. Test Restart Persistence
+
+1. Restart the `uvicorn` server.
+2. Send a follow-up question for `test-session-123`.
+
+**Expected:** The agent should still remember the context because the checkpoints are saved to `storage/checkpoints/langgraph.db`.

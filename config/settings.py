@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     langchain_api_key: Optional[str] = Field(None, env="LANGSMITH_API_KEY")
     langchain_project: Optional[str] = Field(None, env="LANGSMITH_PROJECT")
 
+    # Session Memory
+    session_checkpointer_backend: str = Field("sqlite", env="SESSION_CHECKPOINTER_BACKEND")
+    session_checkpoint_db_path: str = Field("./storage/checkpoints/langgraph.db", env="SESSION_CHECKPOINT_DB_PATH")
+    max_conversation_messages: int = Field(20, env="MAX_CONVERSATION_MESSAGES")
+
     # Project Paths
     base_dir: Path = PROJECT_ROOT
     agents_dir: Path = PROJECT_ROOT / "agents"

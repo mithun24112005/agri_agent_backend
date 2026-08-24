@@ -13,3 +13,4 @@ diseases
 raw_html
 qdrant_storage
 .env
+storage/

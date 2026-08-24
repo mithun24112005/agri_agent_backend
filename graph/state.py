@@ -1,4 +1,5 @@
-from typing import TypedDict, Optional, List, Dict, Any, Literal
+from typing import TypedDict, Optional, List, Dict, Any, Literal, Annotated
+from langgraph.graph.message import add_messages
 
 # ==========================================
 # Common States
@@ -21,6 +22,8 @@ class SupervisorState(TypedDict):
     tasks: List[str]
     selected_agents: List[str]
     response: Optional[str]
+    conversation_context: Optional[str]
+    has_image: Optional[bool]
 
 class DiseaseState(TypedDict):
     image_path: Optional[str]
@@ -53,9 +56,12 @@ class GeneralAgentState(TypedDict):
 # ==========================================
 
 class MainAgentState(TypedDict):
+    # History
+    messages: Annotated[list, add_messages]
+
     # Input
     user_query: str
-    image_path: Optional[str] # Temp path to uploaded image
+    has_image: Optional[bool]
     
     # State from supervisor
     sanitized_query: Optional[str]
@@ -67,6 +73,9 @@ class MainAgentState(TypedDict):
     
     # Results from executed agents
     agent_responses: Dict[str, Any]
+    disease_result: Optional[Dict[str, Any]]
+    crop_result: Optional[Dict[str, Any]]
+    general_result: Optional[Dict[str, Any]]
     
     # Final Output
     final_response: Optional[str]
