@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     crop_model_path: Path = agents_dir / "models" / "crop_recommendation_rf_model.pkl"
     target_encoder_path: Path = agents_dir / "models" / "target_encoder.pkl"
     disease_folder_path: Path = agents_dir / "diseases"
+    disease_dataset_path: Path = agents_dir / "diseases_dataset"
+    disease_collection_name: str = Field("disease_knowledge_v2", env="DISEASE_COLLECTION_NAME")
 
     model_config = SettingsConfigDict(
         env_file=".env", 

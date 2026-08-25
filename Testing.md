@@ -1,19 +1,20 @@
-# Testing Guide: Session-Scoped Short-Term Memory
+# Testing Guide: Disease Agent V2 RAG Pipeline
 
-This guide outlines how to manually verify the new session memory features.
+This guide will help you manually test the newly rebuilt Disease Agent using the `/api/chat` endpoint of your FastAPI backend. The updated agent uses the `disease_knowledge_v2` Qdrant collection, which features semantic section-chunking, rich metadata filtering, and confidence-aware fallbacks.
 
-## 1. Start the Server
-
+## Prerequisites
+Make sure your FastAPI server is running. You mentioned it is currently running on port 8001:
 ```bash
-cd d:\agent_backend
 uv run uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 
-## 2. Verify Health Check
+## 1. Verify Server Health
+Before sending complex queries, verify the server and persistence checkpointer are online.
 
-Run a `GET` request to `http://127.0.0.1:8001/health`
-
-**Expected Output:**
+```bash
+curl -X GET "http://localhost:8001/api/health"
+```
+**Expected Response:**
 ```json
 {
   "status": "ok",
@@ -22,83 +23,96 @@ Run a `GET` request to `http://127.0.0.1:8001/health`
 }
 ```
 
-## 3. Test Disease Follow-up (No Image)
+---
 
-### Turn 1: Upload image
-- **Method**: `POST`
-- **URL**: `http://127.0.0.1:8001/chat`
-- **Body**: `form-data`
-  - `query`: "What disease is this?"
-  - `session_id`: "test-session-123"
-  - `file`: Select a test leaf image
+## 2. Test Text-Only Queries (Direct Retrieval)
 
-**Expected:** The Disease Agent correctly identifies the disease and returns information.
+The new agent uses an LLM Intent Classifier to determine the specific sections required before retrieving data.
 
-### Turn 2: Follow-up question (No Image)
-- **Method**: `POST`
-- **URL**: `http://127.0.0.1:8001/chat`
-- **Body**: `form-data`
-  - `query`: "What is the best chemical control for it?"
-  - `session_id`: "test-session-123"
-  - `file`: [Leave empty]
+### Test A: Single Intent (Symptoms)
+```bash
+curl -X POST "http://localhost:8001/api/chat" \
+  -F "query=What are the symptoms of Apple Scab?" \
+  -F "session_id=test_text_1"
+```
+**What to look for:** The agent should provide a focused answer specifically about the *symptoms* of Apple Scab, drawn exclusively from the `symptoms` chunk, rather than dumping the entire disease overview.
 
-**Expected:** The Supervisor recognizes "it" refers to the previously detected disease due to conversation history. The Disease Agent answers the question using the stored `disease_result` WITHOUT needing a new image upload.
+### Test B: Multi-Intent (Causes & Organic Control)
+```bash
+curl -X POST "http://localhost:8001/api/chat" \
+  -F "query=What causes Bacterial Leaf Streak and how can I treat it organically?" \
+  -F "session_id=test_text_2"
+```
+**What to look for:** The LLM classifier should recognize both `cause_transmission` and `treatment` intents. The V2 Retriever will filter and retrieve only the `causes` and `organic_control` chunks for Bacterial Leaf Streak. 
 
-## 4. Test Crop Agent (State & Params)
+### Test C: Semantic Fallback (Ambiguous Query)
+```bash
+curl -X POST "http://localhost:8001/api/chat" \
+  -F "query=Tell me the best way to handle TSWV" \
+  -F "session_id=test_text_3"
+```
+**What to look for:** If the agent cannot map "TSWV" to the exact `tomato_spotted_wilt_virus` ID, or if the intent is too broad, the V2 Retriever will dynamically fall back to pure semantic search and still return highly relevant Tomato Spotted Wilt Virus chunks.
 
-- **Method**: `POST`
-- **URL**: `http://127.0.0.1:8001/chat`
-- **Body**: `form-data`
-  - `query`: "Recommend a crop for N=40 P=50 K=50 temperature=28 humidity=75 ph=6.5 rainfall=200"
-  - `session_id`: "test-session-123"
+---
 
-**Expected:** The Crop Agent parses the parameters correctly, returns a crop recommendation (e.g., Rice, Papaya), and provides an explanation.
+## 3. Test Image-Based Queries (Prediction + Retrieval)
 
-## 5. Test Multi-Agent Routing (Mixed Queries)
+The agent supports taking an image, passing it to the disease prediction API, and then querying the RAG pipeline for that specific predicted disease.
 
-- **Method**: `POST`
-- **URL**: `http://127.0.0.1:8001/chat`
-- **Body**: `form-data`
-  - `query`: "Can you tell me the current market price of wheat in India, and also what crop should I plant if my soil has N=20, P=30, K=10, temperature is 22C, humidity is 60, ph is 7.0 and rainfall is 100?"
-  - `session_id`: "test-session-123"
+> [!TIP]
+> You will need a sample image of a diseased plant (e.g., an apple leaf with scab). Let's assume you have a file named `apple_scab_leaf.jpg`.
 
-**Expected:** The Supervisor should classify intent as `multi_domain` and route to `['general_agent', 'crop_agent']`. The General Agent uses Tavily to fetch wheat prices, and the Crop Agent makes a recommendation based on the soil parameters. The final response should seamlessly combine both answers.
+### Test D: Image Upload + Query
+```bash
+curl -X POST "http://localhost:8001/api/chat" \
+  -F "query=What is this disease and what are the recommended chemical fungicides?" \
+  -F "session_id=test_image_1" \
+  -F "file=@apple_scab_leaf.jpg"
+```
+**What happens under the hood:**
+1. The `decision_node` intercepts the image and hits the prediction API.
+2. The prediction (e.g., "Apple Scab") is mapped by `mapper.py` to `apple_scab`.
+3. The query is classified for intents (e.g., `treatment`).
+4. The V2 Retriever executes a strict metadata filter: `disease_id="apple_scab"` AND `section=["chemical_control"]`.
+5. The LLM formulates the final answer using that exact chunk.
 
-## 6. Test Multi-Agent Routing (Disease + General)
+---
 
-- **Method**: `POST`
-- **URL**: `http://127.0.0.1:8001/chat`
-- **Body**: `form-data`
-  - `query`: "What disease is this? Also, what are some general sustainable farming practices to prevent soil erosion?"
-  - `session_id`: "test-session-123"
-  - `file`: Select a test leaf image
+## 4. Test Memory / Conversation Context
+Because you are passing a `session_id`, the agent remembers previous interactions via the SQLite checkpointer.
 
-**Expected:** The Supervisor routes to `['disease_agent', 'general_agent']`. The response synthesizes the disease diagnosis (from the image) with the sustainable farming advice.
+### Test E: Contextual Follow-up
+Run this immediately after Test A or Test B using the **same** `session_id`:
+```bash
+curl -X POST "http://localhost:8001/api/chat" \
+  -F "query=Are there any preventive measures for it?" \
+  -F "session_id=test_text_1"
+```
+**What to look for:** The agent should remember that "it" refers to Apple Scab (from Test A), retrieve the `preventive_measures` chunk for Apple Scab, and provide the answer.
 
-## 7. Test Guardrail Rejection
+---
 
-- **Method**: `POST`
-- **URL**: `http://127.0.0.1:8001/chat`
-- **Body**: `form-data`
-  - `query`: "What is the capital of France?"
-  - `session_id`: "test-session-123"
+## Troubleshooting Guide
 
-**Expected:** The query should be rejected by the Guardrail with a message stating it can only assist with agriculture-related questions.
+If a retrieval seems incorrect during testing, you can manually inspect the Qdrant V2 collection logic:
 
-## 8. Test Cross-Session Isolation
+**1. Check if the disease exists in V2:**
+```bash
+uv run python -c "from qdrant_client import QdrantClient; c = QdrantClient(url='http://localhost:6333'); res = c.scroll(collection_name='disease_knowledge_v2', scroll_filter={'must': [{'key': 'disease_id', 'match': {'value': 'apple_scab'}}]}, limit=1); print(res)"
+```
 
-- **Method**: `POST`
-- **URL**: `http://127.0.0.1:8001/chat`
-- **Body**: `form-data`
-  - `query`: "What was the chemical control you suggested earlier?"
-  - `session_id`: "different-session-456"
-  - `file`: [Leave empty]
+**2. Check the raw V2 Retriever output (Debug Search):**
+You can write a quick debug script to see exactly how the retriever scores your query:
+```python
+# debug_rag.py
+from agents.disease.retriever import disease_retriever_v2
+import json
 
-**Expected:** The agent should state it does not know what you are referring to or that the query lacks context, proving that memory is isolated to `test-session-123`.
-
-## 9. Test Restart Persistence
-
-1. Restart the `uvicorn` server.
-2. Send a follow-up question for `test-session-123`.
-
-**Expected:** The agent should still remember the context because the checkpoints are saved to `storage/checkpoints/langgraph.db`.
+results = disease_retriever_v2.debug_search(
+    question="How do I cure apple scab organically?", 
+    disease_id="apple_scab", 
+    intents=["organic_control"]
+)
+print(json.dumps(results, indent=2))
+```
+This will print the `score`, `section`, and `text_snippet` of the top chunks, proving the semantic engine is prioritizing the correct section!

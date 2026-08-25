@@ -9,7 +9,7 @@ wheels/
 # Virtual environments
 .venv
 crop_data
-diseases
+diseases_dataset
 raw_html
 qdrant_storage
 .env

@@ -7,7 +7,7 @@ class DiseaseMapper:
     def __init__(self, disease_folder: str = None):
         self.lookup = {}
         self.alias_lookup = {}
-        folder = disease_folder or settings.disease_folder_path
+        folder = disease_folder or settings.disease_dataset_path
         self.load_diseases(folder)
 
     def load_diseases(self, disease_folder: Path):

@@ -34,7 +34,9 @@ environment
 general
 
 If multiple intents are relevant, return all of them.
-Never invent new intent names."""
+Never invent new intent names.
+
+CRITICAL: You MUST use the provided tool/function to output your decision. DO NOT output conversational text. DO NOT greet the user."""
     ),
     ("human", "{question}")
 ])

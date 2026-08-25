@@ -77,7 +77,7 @@ async def guardrail_node(state: SupervisorState):
         }
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Determine if the following query is related to agriculture, farming, crops, plants, or plant diseases. Return a structured decision."),
+        ("system", "Determine if the following query is related to agriculture, farming, crops, plants, or plant diseases. Return a structured decision. CRITICAL: You MUST use the provided tool/function to output your decision. DO NOT output conversational text."),
         ("human", "{query}")
     ])
     chain = prompt | llm.with_structured_output(GuardrailDecision)
@@ -109,7 +109,9 @@ Image Status: {image_note}
 If an image is uploaded, you MUST select the disease_agent.
 
 Recent Conversation Context:
-{context}"""),
+{context}
+
+CRITICAL: You MUST use the provided tool/function to output your decision. DO NOT output conversational text. DO NOT greet the user."""),
         ("human", "{query}")
     ])
     chain = prompt | llm.with_structured_output(SupervisorDecision)

@@ -133,7 +133,7 @@ async def run_agents(state: MainAgentState, config: RunnableConfig):
                 
             elif agent == "crop_agent":
                 prompt = ChatPromptTemplate.from_messages([
-                    ("system", "Extract soil and environmental parameters from the text. Use defaults if not mentioned: N=0, P=0, K=0, temp=25, humidity=60, ph=6.5, rainfall=100."),
+                    ("system", "Extract soil and environmental parameters from the text. Use defaults if not mentioned: N=0, P=0, K=0, temp=25, humidity=60, ph=6.5, rainfall=100. CRITICAL: You MUST use the provided tool/function to output your decision. DO NOT output conversational text."),
                     ("human", "{query}")
                 ])
                 chain = prompt | llm.with_structured_output(CropParamsExtraction)

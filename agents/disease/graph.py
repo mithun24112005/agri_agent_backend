@@ -2,7 +2,7 @@ from langgraph.graph import StateGraph, START, END
 from graph.state import DiseaseState
 from agents.disease.mapper import disease_mapper
 from agents.disease.classifier import classifier_chain, disease_qa_chain
-from agents.disease.retriever import disease_retriever
+from agents.disease.retriever import disease_retriever, disease_retriever_v2
 from services.disease_api import predict_disease_from_path
 import asyncio
 
@@ -53,16 +53,17 @@ def retriever_node(state: DiseaseState):
     disease_id = state.get("disease_id")
     intents = state.get("intents", [])
     
-    # If we have a specific disease_id, use exact match retrieval
-    if disease_id and disease_mapper.exists(disease_id):
-        context = disease_retriever.build_context(disease_id, intents)
-        if not context.strip():
-            # Fallback if no sections matched
-            context = "No detailed information found for the requested sections."
-    else:
-        # Fallback to semantic search on the question
-        results = disease_retriever.search(state["question"], limit=3)
-        context = "\n\n".join(r.payload.get("text", "") for r in results)
+    # Use V2 retriever with fallback logic
+    valid_disease_id = disease_id if disease_id and disease_mapper.exists(disease_id) else None
+    
+    context = disease_retriever_v2.build_context(
+        question=state["question"], 
+        disease_id=valid_disease_id, 
+        intents=intents
+    )
+    
+    if not context.strip():
+        context = "No detailed information found for the requested topic."
         
     return {"context": context}
 
