@@ -65,7 +65,9 @@ async def chat_endpoint(
             "status": "success",
             "query": query,
             "response": final_response,
-            "session_id": session_id
+            "session_id": session_id,
+            "selected_agents": result.get("selected_agents", []),
+            "agent_responses": result.get("agent_responses", {})
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Graph execution failed: {e}")
