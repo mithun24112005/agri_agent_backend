@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Request
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Request, Depends, Header
 from typing import Optional
 from services.disease_detection.exceptions import (
     HFNetworkError,
@@ -8,8 +8,14 @@ from services.disease_detection.exceptions import (
     InvalidImageError,
     DiseaseDetectionError
 )
+import os
 
-chat_router = APIRouter()
+async def verify_internal_api_key(x_internal_api_key: str = Header(...)):
+    expected = os.getenv("INTERNAL_API_SECRET")
+    if not expected or x_internal_api_key != expected:
+        raise HTTPException(status_code=403, detail="Forbidden: Invalid internal API key")
+
+chat_router = APIRouter(dependencies=[Depends(verify_internal_api_key)])
 
 @chat_router.post("/chat", tags=["Chat"])
 async def chat_endpoint(
@@ -90,4 +96,40 @@ async def chat_endpoint(
     finally:
         if image_path and os.path.exists(image_path):
             os.remove(image_path)
+
+@chat_router.get("/chat/{session_id}", tags=["Chat"])
+async def get_chat_history(session_id: str, request: Request):
+    """
+    Retrieve message history for a given session.
+    """
+    try:
+        session_id = session_id.strip()
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Invalid session_id.")
+            
+        graph = request.app.state.graph
+        config = {"configurable": {"thread_id": session_id}}
+        
+        state_snapshot = await graph.aget_state(config)
+        
+        if not state_snapshot or not state_snapshot.values:
+            return {"session_id": session_id, "messages": []}
+            
+        messages = state_snapshot.values.get("messages", [])
+        
+        formatted_messages = []
+        for msg in messages:
+            # Check msg type attribute or class name
+            msg_type = getattr(msg, "type", None)
+            if not msg_type:
+                msg_type = "human" if "HumanMessage" in str(type(msg)) else "ai"
+                
+            if msg_type == "human":
+                formatted_messages.append({"role": "user", "content": msg.content})
+            elif msg_type == "ai":
+                formatted_messages.append({"role": "assistant", "content": msg.content})
+                
+        return {"session_id": session_id, "messages": formatted_messages}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch history: {e}")
 

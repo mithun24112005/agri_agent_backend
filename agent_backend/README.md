@@ -60,11 +60,13 @@ Conversations are **session-scoped and persistent**, so a farmer can upload an i
 
 ## 🏗️ Architecture
 
-The system is a **graph of graphs**. The top-level orchestration graph owns persistence and response synthesis; it delegates routing to a Supervisor sub-graph and execution to three self-contained agent sub-graphs.
+The system uses an **Express.js API Gateway** for authentication, authorization, and rate limiting, which proxies requests to a **FastAPI backend** running a **graph of graphs**. The top-level orchestration graph owns persistence and response synthesis; it delegates routing to a Supervisor sub-graph and execution to three self-contained agent sub-graphs.
 
 ```mermaid
 flowchart TD
-    Client["Client / Frontend"] -->|"multipart/form-data<br/>query · session_id · image?"| API["FastAPI<br/>POST /chat"]
+    Client["Client / Frontend"] -->|"POST /api/chat<br/>JWT Auth"| Gateway["Express Gateway<br/>Auth + Redis Rate Limiting"]
+
+    Gateway -->|"X-Internal-API-Key"| API["FastAPI<br/>POST /chat"]
 
     subgraph MAIN["🧩 Main Orchestration Graph"]
         direction TB
@@ -109,13 +111,15 @@ flowchart TD
 
     Format --> API
     API <-->|"read / write history"| DB[("SQLite<br/>langgraph.db")]
+    Gateway <-->|"Users / Sessions"| AuthDB[("SQLite<br/>auth.db")]
 ```
 
 ### Component responsibilities
 
 | Layer | Module | Responsibility |
 |-------|--------|----------------|
-| **API** | `main.py`, `api/routes.py` | FastAPI app, lifespan wiring, `/chat` and `/health` endpoints, image handling. |
+| **Gateway** | `gateway/` | Express.js API gateway. Handles JWT auth, session authorization, and Redis rate-limiting. |
+| **API** | `main.py`, `api/routes.py` | FastAPI app, protected internal endpoints, lifespan wiring. |
 | **Orchestration** | `graph/main_graph.py` | `classify → run_agents → format`; builds context, dispatches agents, merges responses. |
 | **Routing** | `agents/supervisor/graph.py` | `PII sanitizer → guardrail → supervisor/reject`; intent classification & agent selection. |
 | **Disease** | `agents/disease/*` | V2 RAG Pipeline: `ingest.py`, `normalizer.py`, `chunker.py`, intent classifier, and V2 Retriever with semantic fallback. |
@@ -123,6 +127,7 @@ flowchart TD
 | **General** | `agents/general/graph.py` | `validate → search → process evidence → reason` (Tavily-grounded). |
 | **State & Memory** | `graph/state.py`, `graph/persistence.py` | Typed `TypedDict` states and the SQLite checkpointer factory. |
 | **Config** | `config/settings.py` | `pydantic-settings`-based configuration from environment. |
+
 
 ---
 
