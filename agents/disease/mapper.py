@@ -52,7 +52,10 @@ class DiseaseMapper:
         text = re.sub(r"_+", "_", text)
         return text.strip("_")
 
-    def map_prediction(self, prediction: str):
+    def map_prediction(self, prediction: str, crop: str = None):
+        """
+        Maps a prediction string (e.g. disease name) and optional crop to a disease ID.
+        """
         if not prediction:
             return {"prediction": None, "crop": None, "disease_id": None, "title": None}
             
@@ -61,14 +64,14 @@ class DiseaseMapper:
         else:
             parts = prediction.split("___")
             if len(parts) == 2:
-                _, disease = parts
-                disease_id = self.normalize(disease)
+                crop = crop or self.normalize(parts[0])
+                disease_id = self.normalize(parts[1])
             else:
                 disease_id = self.normalize(prediction)
 
-        parts = prediction.split("___")
-        crop = self.normalize(parts[0]) if len(parts) == 2 else None
-
+        if crop:
+            crop = self.normalize(crop)
+            
         return {
             "prediction": prediction,
             "crop": crop,

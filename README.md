@@ -95,7 +95,7 @@ flowchart TD
     Run --> Crop
     Run --> General
 
-    Disease --> DAPI["External Disease ML API"]
+    Disease --> DAPI["Hugging Face Inference API<br/>linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification"]
     Disease --> QD[("Qdrant<br/>plant_diseases")]
     Disease --> HF["HuggingFace<br/>bge-m3 embeddings"]
     Crop --> RF["scikit-learn<br/>Random Forest"]
@@ -186,9 +186,9 @@ Memory balances completeness with the practical limits of an LLM context window.
 | **Web Search** | Tavily |
 | **Session Persistence** | SQLite via `AsyncSqliteSaver` (`aiosqlite`) |
 | **Config & Validation** | `pydantic-settings` · `python-dotenv` |
-| **HTTP Client** | `httpx` (calls the external disease ML API) |
+| **HTTP Client** | `httpx` & `huggingface_hub` |
 | **Observability** | LangSmith (optional) |
-| **Disease Classification** | External ML API (a separate service) |
+| **Disease Classification** | Hugging Face Inference API (`mobilenet_v2`) |
 
 ---
 
@@ -238,7 +238,7 @@ Before running the backend, make sure you have:
 - **Python 3.13** and the **[`uv`](https://docs.astral.sh/uv/)** package manager
 - **Docker** (to run Qdrant), or access to an existing Qdrant instance
 - **API keys**: [Groq](https://console.groq.com/), [HuggingFace](https://huggingface.co/settings/tokens) (for embeddings), and [Tavily](https://tavily.com/)
-- A running **external Disease ML API** exposing `POST /disease/predict` (only required for image-based disease detection)
+- A valid Hugging Face Token (`HF_TOKEN`) for the disease classification model.
 - **Data & model assets** (not included in the repo):
   - `agents/models/crop_recommendation_rf_model.pkl` and `agents/models/target_encoder.pkl`
   - Disease knowledge JSON files under `agents/diseases/`
@@ -277,9 +277,9 @@ Qdrant will be available at `http://localhost:6333`.
 
 Place the Random Forest artifacts in `agents/models/`, the disease JSON files in `agents/diseases/`, and seed the `plant_diseases` and `crop_knowledge` Qdrant collections.
 
-### 5. Start the external Disease ML API
+### 5. Start the Application
 
-Run your image-classification service so it is reachable at `DISEASE_API_URL` (default `http://127.0.0.1:8000`). This is only needed for image-based disease detection.
+The disease detection uses the remote Hugging Face Inference API, so you do not need to run a local model server. Just ensure `HF_TOKEN` is set.
 
 ### 6. Configure environment variables
 
@@ -299,7 +299,8 @@ TAVILY_API_KEY=your_tavily_api_key      # web search
 
 # ── External services (defaults shown) ───────────────────
 QDRANT_URL=http://localhost:6333
-DISEASE_API_URL=http://127.0.0.1:8000
+HF_TOKEN=your_huggingface_token
+HF_DISEASE_MODEL=linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification
 
 # ── Session memory (defaults shown) ──────────────────────
 SESSION_CHECKPOINTER_BACKEND=sqlite
@@ -321,7 +322,8 @@ LANGSMITH_PROJECT=smart-agriculture
 | `HF_TOKEN` | ✅ | — | HuggingFace token for `bge-m3` embeddings. |
 | `TAVILY_API_KEY` | ✅ | — | Tavily key for the General Agent's web search. |
 | `QDRANT_URL` | — | `http://localhost:6333` | Qdrant endpoint. |
-| `DISEASE_API_URL` | — | `http://127.0.0.1:8000` | Base URL of the external disease classifier. |
+| `HF_TOKEN` | — | `None` | Your Hugging Face API token for remote disease inference. |
+| `HF_DISEASE_MODEL` | — | `linkanjarad/mobilenet_v2...` | The Hugging Face repo ID for disease classification. |
 | `SESSION_CHECKPOINTER_BACKEND` | — | `sqlite` | Memory backend (SQLite today; pluggable). |
 | `SESSION_CHECKPOINT_DB_PATH` | — | `./storage/checkpoints/langgraph.db` | SQLite checkpoint file path. |
 | `MAX_CONVERSATION_MESSAGES` | — | `20` | Upper bound for retained conversation messages. |
@@ -440,12 +442,6 @@ The architecture is designed so these enhancements can be added without a redesi
 - **Long-term semantic memory** — periodically summarize a session and prepend the summary to future context.
 - **Pinned entity memory** — always-available structured facts (already seeded by the stored `disease_result` / `crop_result`).
 - **PostgreSQL checkpointer** — `graph/persistence.py` is a factory built to accept additional backends beyond SQLite.
-
----
-
-## 📄 License
-
-No license file is currently included in this repository. Add one (for example, `MIT`) before public distribution.
 
 ---
 

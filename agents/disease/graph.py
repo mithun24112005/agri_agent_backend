@@ -3,7 +3,8 @@ from graph.state import DiseaseState
 from agents.disease.mapper import disease_mapper
 from agents.disease.classifier import classifier_chain, disease_qa_chain
 from agents.disease.retriever import disease_retriever, disease_retriever_v2
-from services.disease_api import predict_disease_from_path
+from services.disease_detection import detector
+from services.disease_detection.exceptions import DiseaseDetectionError
 import asyncio
 
 MAX_RETRIES = 3
@@ -23,19 +24,43 @@ async def invoke_with_retry(chain, input_data, retries=MAX_RETRIES):
                 raise
 
 async def decision_node(state: DiseaseState):
-    """If image_path is present, get prediction from disease API."""
+    """If image_path is present, get prediction from HF disease API."""
     if state.get("image_path"):
         try:
-            result = await predict_disease_from_path(state["image_path"])
-            return {"prediction": result.disease}
+            result = await detector.predict(state["image_path"])
+            # Return both prediction and the rich detection result
+            return {
+                "prediction": result.disease,
+                "detection_result": result.model_dump()
+            }
+        except DiseaseDetectionError as e:
+            print(f"Disease prediction specific failure: {e}")
+            raise # Let it bubble up to api/routes.py for HTTP mapping
         except Exception as e:
-            print(f"Disease prediction failed: {e}")
-            return {"prediction": None}
+            print(f"Disease prediction unknown failure: {e}")
+            return {"prediction": None, "detection_result": None}
     return {}
 
 def mapper_node(state: DiseaseState):
     """Map prediction to disease ID and crop."""
-    if state.get("prediction"):
+    dr = state.get("detection_result")
+    
+    if dr and dr.get("disease"):
+        # We use the raw_label to get the most accurate mapping if disease alone fails
+        # but the normalized disease from HF is better. Let's pass disease.
+        mapped = disease_mapper.map_prediction(dr["disease"], crop=dr.get("crop"))
+        
+        # If mapped disease ID is not found, try raw label
+        if not mapped["disease_id"] or not disease_mapper.exists(mapped["disease_id"]):
+            mapped_raw = disease_mapper.map_prediction(dr["raw_label"], crop=dr.get("crop"))
+            if mapped_raw["disease_id"] and disease_mapper.exists(mapped_raw["disease_id"]):
+                mapped = mapped_raw
+                
+        return {
+            "disease_id": mapped["disease_id"],
+            "crop": mapped["crop"]
+        }
+    elif state.get("prediction"):
         mapped = disease_mapper.map_prediction(state["prediction"])
         return {
             "disease_id": mapped["disease_id"],

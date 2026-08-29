@@ -1,5 +1,13 @@
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Request
 from typing import Optional
+from services.disease_detection.exceptions import (
+    HFNetworkError,
+    HFTimeoutError,
+    HFAuthenticationError,
+    HFServiceError,
+    InvalidImageError,
+    DiseaseDetectionError
+)
 
 chat_router = APIRouter()
 
@@ -69,6 +77,14 @@ async def chat_endpoint(
             "selected_agents": result.get("selected_agents", []),
             "agent_responses": result.get("agent_responses", {})
         }
+    except InvalidImageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HFAuthenticationError as e:
+        raise HTTPException(status_code=500, detail=f"Configuration Error: {e}")
+    except (HFNetworkError, HFTimeoutError, HFServiceError) as e:
+        raise HTTPException(status_code=502, detail=f"External Detection Service Error: {e}")
+    except DiseaseDetectionError as e:
+        raise HTTPException(status_code=500, detail=f"Detection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Graph execution failed: {e}")
     finally:

@@ -27,7 +27,8 @@ class SupervisorState(TypedDict):
 
 class DiseaseState(TypedDict):
     image_path: Optional[str]
-    prediction: Optional[str] # Might be None if text-only query
+    prediction: Optional[str] # Main disease string
+    detection_result: Optional[Dict[str, Any]] # Rich HF detector output
     question: str
     disease_id: Optional[str]
     crop: Optional[str]

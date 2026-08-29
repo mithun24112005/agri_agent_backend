@@ -6,6 +6,7 @@ from agents.disease.graph import disease_graph
 from agents.crop.graph import crop_graph
 from agents.general.graph import general_graph
 from agents.response.graph import response_node
+from services.disease_detection.exceptions import DiseaseDetectionError
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chat_models import init_chat_model
@@ -166,6 +167,9 @@ async def run_agents(state: MainAgentState, config: RunnableConfig):
                 print(f"[EXECUTOR] Calling general_agent with: {general_input}")
                 res = await general_graph.ainvoke(general_input)
                 responses["general_agent"] = res.get("answer", "General agent did not return a response.")
+        except DiseaseDetectionError as e:
+            print(f"[EXECUTOR] Disease detection specific error in {agent}: {e}")
+            raise # Let it bubble to api/routes.py
         except Exception as e:
             print(f"[EXECUTOR] Error in {agent}: {e}")
             traceback.print_exc()
