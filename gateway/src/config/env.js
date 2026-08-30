@@ -10,7 +10,7 @@ const env = {
   REDIS_URL: process.env.REDIS_URL || 'redis://localhost:6379',
   FASTAPI_BASE_URL: process.env.FASTAPI_BASE_URL || 'http://localhost:8001',
   INTERNAL_API_SECRET: process.env.INTERNAL_API_SECRET,
-  FRONTEND_ORIGIN: process.env.FRONTEND_ORIGIN || 'http://localhost:8501',
+  FRONTEND_ORIGIN: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
   RATE_LIMIT_LOGIN: parseInt(process.env.RATE_LIMIT_LOGIN || '10', 10),
   RATE_LIMIT_REGISTER: parseInt(process.env.RATE_LIMIT_REGISTER || '5', 10),
   RATE_LIMIT_CHAT: parseInt(process.env.RATE_LIMIT_CHAT || '30', 10),

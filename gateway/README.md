@@ -49,7 +49,7 @@ Create a `.env` file in this directory with the following variables:
 # Server Configuration
 NODE_ENV=development
 PORT=3001
-FRONTEND_ORIGIN=http://localhost:8501
+FRONTEND_ORIGIN=http://localhost:5173
 
 # Database Configuration (Relative to prisma folder)
 DATABASE_URL="file:../../agent_backend/storage/auth/auth.db"
