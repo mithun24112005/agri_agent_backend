@@ -2,6 +2,8 @@ from typing import List, Optional
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from huggingface_hub import InferenceClient
+from huggingface_hub.errors import HfHubHTTPError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from config.settings import settings
 
 class DiseaseRetriever:
@@ -22,6 +24,12 @@ class DiseaseRetriever:
             "environment": 7,
         }
 
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(Exception),
+        reraise=True
+    )
     def embed(self, text: str):
         return self.hf.feature_extraction(text, model=self.model)
 
@@ -102,6 +110,12 @@ class DiseaseRetrieverV2:
         self.model = "BAAI/bge-m3"
         self.collection = settings.disease_collection_name
 
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(Exception),
+        reraise=True
+    )
     def embed(self, text: str):
         return self.hf.feature_extraction(text, model=self.model)
 
