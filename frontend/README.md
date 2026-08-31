@@ -61,7 +61,7 @@ History is loaded from `GET /api/chat/:session_id`. The backend already persists
 
 The gateway currently returns a completed response after FastAPI’s `graph.ainvoke`; it does not expose token streaming. The frontend shows the real pending state and then the complete response. No simulated streaming is used. A future streaming gateway can replace the isolated model adapter with an async generator without changing the UI shell.
 
-Images are accepted as JPEG, PNG, WebP, or GIF up to 5 MiB. They stay as local object URLs for preview and are sent as binary multipart data to the gateway.
+Images are accepted as JPEG, PNG, WebP, or GIF up to 5 MiB. Uploaded images are stored under the agent backend's ignored `storage/uploads` directory and their metadata is persisted with the LangGraph checkpoint, so history can restore the image after a reload.
 
 ## Features
 

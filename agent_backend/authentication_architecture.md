@@ -6,7 +6,7 @@ A new Express.js API gateway sits in front of the existing FastAPI LangGraph bac
 ## Architecture
 
 ```text
-                         Browser / Streamlit (Port 8501)
+                         Browser / React frontend (Port 5173)
                                 │
                                 │ HTTPS / HTTP
                                 ▼
@@ -53,7 +53,7 @@ A new Express.js API gateway sits in front of the existing FastAPI LangGraph bac
 | FastAPI          | AI backend                      |
 | LangGraph SQLite | Conversation persistence        |
 | Qdrant           | Vector retrieval                |
-| Streamlit        | Temporary frontend              |
+| React frontend   | Browser client                  |
 
 ## Security Implementations
 - **Refresh Token Rotation**: Refresh tokens are cryptographically hashed in the SQLite database. When used, the old token is revoked and a new one is issued transactionally.

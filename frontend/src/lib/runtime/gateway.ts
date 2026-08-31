@@ -1,17 +1,15 @@
 import { fromThreadMessageLike, type ChatModelAdapter, type CompleteAttachment, type ThreadMessage, type ThreadMessageLike } from "@assistant-ui/react";
 import { chatApi } from "@/lib/api/chat";
 import { activityStore } from "./activity";
-import { getFileForPreviewUrl } from "./attachments";
 import type { AgentName } from "@/types/api";
+import type { ChatMessage } from "@/types/api";
 
 function getText(message: ThreadMessage): string {
   return message.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").trim();
 }
 
 function getImageFileFromAttachment(attachment: CompleteAttachment): File | undefined {
-  if (attachment.file) return attachment.file;
-  const image = attachment.content.find((part) => part.type === "image");
-  return image?.type === "image" ? getFileForPreviewUrl(image.image) : undefined;
+  return attachment.file;
 }
 
 function getImageFile(message: ThreadMessage): File | undefined {
@@ -21,8 +19,7 @@ function getImageFile(message: ThreadMessage): File | undefined {
       if (file) return file;
     }
   }
-  const image = message.content.find((part) => part.type === "image");
-  return image?.type === "image" ? getFileForPreviewUrl(image.image) : undefined;
+  return undefined;
 }
 
 export const gatewayModelAdapter: ChatModelAdapter = {
@@ -42,13 +39,14 @@ export const gatewayModelAdapter: ChatModelAdapter = {
         metadata: { custom: { selected_agents: agents, agent_responses: result.agent_responses } },
       };
     } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError")) activityStore.set({ status: "error", agents: [], selectedCount: 0 });
+      const isAbort = error instanceof Error && error.name === "AbortError";
+      activityStore.set(isAbort ? { status: "idle", agents: [], selectedCount: 0 } : { status: "error", agents: [], selectedCount: 0 });
       throw error;
     }
   },
 };
 
-export function historyMessage(message: { role: "user" | "assistant"; content: string }, index: number, sessionId: string): ThreadMessage {
+export function historyMessage(message: ChatMessage, index: number, sessionId: string): ThreadMessage {
   const id = `gateway-${sessionId}-${index}`;
   const like: ThreadMessageLike = {
     id,
@@ -57,6 +55,16 @@ export function historyMessage(message: { role: "user" | "assistant"; content: s
     createdAt: new Date(),
     status: message.role === "assistant" ? { type: "complete", reason: "stop" } : undefined,
     metadata: { custom: {} },
+    ...(message.image ? {
+      attachments: [{
+        id: `${id}-image`,
+        type: "image" as const,
+        name: message.image.filename,
+        contentType: message.image.content_type,
+        content: [{ type: "image" as const, image: message.image.data_url, filename: message.image.filename }],
+        status: { type: "complete" as const },
+      }],
+    } : {}),
   };
   return fromThreadMessageLike(like, id, { type: "complete", reason: "stop" });
 }

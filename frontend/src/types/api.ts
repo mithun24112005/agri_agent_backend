@@ -23,6 +23,12 @@ export interface Session {
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  image?: {
+    data_url: string;
+    filename: string;
+    content_type: string;
+    size: number;
+  };
 }
 
 export interface ChatHistory {

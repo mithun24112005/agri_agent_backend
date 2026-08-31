@@ -148,7 +148,7 @@ flowchart LR
     H --> I["9 · Persist AI reply<br/>+ return to client"]
 ```
 
-1. **Receive** — The endpoint accepts `query`, `session_id`, and an optional image `file` (saved to a temp path, deleted after the request).
+1. **Receive** — The endpoint accepts `query`, `session_id`, and an optional image `file` (stored under ignored `storage/uploads/` with its metadata checkpointed alongside the message).
 2. **Persist & load context** — The user message is checkpointed, and the last 6 messages (3 turns) are loaded as rolling context.
 3. **Sanitize** — PII is scrubbed before anything is sent to external LLMs.
 4. **Guardrail** — Non-agriculture queries are rejected. *An attached image or an existing conversation automatically passes the guardrail.*
@@ -165,7 +165,8 @@ Memory balances completeness with the practical limits of an LLM context window.
 
 | Layer | Where it lives | Persists across restarts? |
 |-------|----------------|:-------------------------:|
-| Full message history | `storage/checkpoints/langgraph.db` (SQLite) | ✅ |
+| Full message history and image metadata | `storage/checkpoints/langgraph.db` (SQLite) | ✅ |
+| Uploaded image files | `storage/uploads/` (ignored durable file storage) | ✅ |
 | Active context (rolling window) | Rebuilt per request from the last **6 messages** | ❌ (recomputed) |
 | Last disease result (prediction, disease id, crop) | SQLite checkpoint state | ✅ |
 | Last crop result (recommended crop, features) | SQLite checkpoint state | ✅ |
@@ -222,12 +223,13 @@ agent_backend/
 │   └── diseases/               # Disease knowledge base (.json)          ‹not tracked›
 ├── services/
 │   ├── crop_model.py           # Random Forest feature prep + inference
-│   └── disease_api.py          # Client for the external disease ML API
+│   ├── image_storage.py        # Durable upload storage + history data URLs
+│   └── disease_detection/      # External disease detection service
 ├── schemas/                    # Pydantic request/response models
 ├── config/
 │   └── settings.py             # pydantic-settings configuration
 ├── assets/                     # Sample images (e.g. AppleScab1.JPG)
-├── storage/                    # SQLite checkpoints                       ‹not tracked›
+├── storage/                    # SQLite checkpoints + image uploads       ‹not tracked›
 ├── Working.md                  # Memory model documentation
 └── Testing.md                  # Manual API testing guide
 ```

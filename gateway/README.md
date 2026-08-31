@@ -25,7 +25,7 @@ The Gateway serves as the public-facing entry point to the system, acting as a s
 
 ```mermaid
 graph LR
-    Client([Client / Streamlit]) -->|HTTPS| Gateway[Express API Gateway :3001]
+    Client([React frontend :5173]) -->|HTTPS| Gateway[Express API Gateway :3001]
     
     subgraph Gateway Layer
         Gateway --> Auth[Auth & Sessions]
@@ -109,3 +109,7 @@ npm start
 ### Chat Routes (`/api/chat`)
 * `POST /`: Send a query (and optional image file) to the AI assistant. Proxies the request to the LangGraph backend.
 * `GET /:session_id`: Fetch the historical chat messages for a given session.
+
+### Health Routes
+* `GET /health`: Check gateway process health.
+* `GET /health/ready`: Check gateway readiness.

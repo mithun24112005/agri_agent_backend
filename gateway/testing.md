@@ -1,6 +1,6 @@
 # Gateway Testing & Startup Guide
 
-This document provides step-by-step instructions for starting the complete architecture (Gateway, FastAPI, Streamlit, and backing services) and verifying that authentication, rate limiting, and the proxy work correctly.
+This document provides step-by-step instructions for starting the complete architecture (Gateway, FastAPI, React frontend, and backing services) and verifying that authentication, rate limiting, and the proxy work correctly.
 
 ---
 
@@ -50,18 +50,17 @@ npm run dev
 ```
 *(You should see "Server running on http://localhost:3001" and "Redis connected for rate limiting")*
 
-### Terminal 3: Start the Streamlit Frontend
-If your virtual environment is active:
+### Terminal 3: Start the React Frontend
 ```bash
-cd ../agent_backend
-python -m streamlit run frontend/app.py --server.port 8501
+cd ../frontend
+npm install
+npm run dev
 ```
-*(If you have NOT activated the environment, you can use `uv run streamlit run frontend/app.py --server.port 8501`)*
-*(This will automatically open your browser to http://localhost:8501)*
+Open `http://localhost:5173` in your browser.
 
 ---
 
-## 3. Manual Testing via Streamlit (E2E)
+## 3. Manual Testing via React (E2E)
 
 1. **Register a User:**
    - Go to the "Register" tab in the UI.
@@ -73,23 +72,21 @@ python -m streamlit run frontend/app.py --server.port 8501
    - Enter your credentials and login.
    - You should be redirected to the main chat interface, and the sidebar will show your email.
 
-3. **Check System Health:**
-   - Look at the sidebar. Under "System Status", it should show **Gateway: Connected**.
-
-4. **Create a Session:**
+3. **Create a Session:**
    - Click **➕ New Chat** in the sidebar. A new session ("New Chat") will appear.
 
-5. **Test the Chat Proxy (No Image):**
+4. **Test the Chat Proxy (No Image):**
    - Ask a question: *"What are the NPK requirements for growing tomatoes?"*
    - Verify that the chat streams back normally and the Agent Activity expander shows the selected agents.
    
-6. **Test the Chat Proxy (With Image):**
-   - Click "Browse files" on the image uploader.
-   - Select an image (e.g., `AppleScab1.JPG` from the `assets` folder).
-   - Type *"What disease is this?"* and hit Enter.
-   - Verify the AI successfully receives the image, classifies it, and replies.
+5. **Test the Chat Proxy (With Image):**
+   - Click the paperclip button in the composer.
+   - Select an image (e.g., `AppleScab1.JPG` from the `agent_backend/assets` folder).
+   - Type *"What disease is this?"* and send it.
+   - Verify the AI receives the image, classifies it, and replies.
+   - Reload or switch away and back to the conversation; verify the image remains visible.
 
-7. **Logout:**
+6. **Logout:**
    - Click **Logout** in the sidebar. You should be returned to the Login screen.
 
 ---

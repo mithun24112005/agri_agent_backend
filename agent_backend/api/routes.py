@@ -1,4 +1,5 @@
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Request, Depends, Header
+from langchain_core.messages import HumanMessage
 from typing import Optional
 from services.disease_detection.exceptions import (
     HFNetworkError,
@@ -9,6 +10,7 @@ from services.disease_detection.exceptions import (
     DiseaseDetectionError
 )
 import os
+from services.image_storage import image_as_data_url, remove_stored_image, save_uploaded_image
 
 async def verify_internal_api_key(x_internal_api_key: str = Header(...)):
     expected = os.getenv("INTERNAL_API_SECRET")
@@ -28,46 +30,43 @@ async def chat_endpoint(
     Handle user queries for the agriculture assistant.
     Can accept a text query and an optional image file (e.g., for disease detection).
     """
-    import os
-    import shutil
-    import tempfile
-    
     graph = request.app.state.graph
+    session_id = session_id.strip()
+    if not session_id or len(session_id) > 255:
+        raise HTTPException(status_code=400, detail="Invalid session_id.")
 
-    image_path = None
+    image_attachment = None
+    completed = False
     print(f"Received query: {query}")
     print(f"Received file object: {file}")
     
     if file is not None and file.filename:
         print(f"File name: {file.filename}, File content type: {file.content_type}")
         try:
-            # Create a temporary file to save the uploaded image
-            fd, temp_path = tempfile.mkstemp(suffix=".jpg")
-            with os.fdopen(fd, "wb") as f:
-                shutil.copyfileobj(file.file, f)
-            image_path = temp_path
-            print(f"Saved image to {image_path}")
+            image_attachment = await save_uploaded_image(file)
+            print(f"Saved image to durable storage: {image_attachment['path']}")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:
             print(f"Error saving image: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to process image: {e}")
+            raise HTTPException(status_code=500, detail="Failed to store the uploaded image.") from e
 
     try:
-        # Validate session_id
-        session_id = session_id.strip()
-        if not session_id or len(session_id) > 255:
-            raise HTTPException(status_code=400, detail="Invalid session_id.")
-
         # Run the LangGraph application
+        human_message = HumanMessage(
+            content=query,
+            additional_kwargs={"image_attachment": image_attachment} if image_attachment else {},
+        )
         initial_state = {
             "user_query": query,
-            "has_image": image_path is not None,
-            "messages": [("human", query)]
+            "has_image": image_attachment is not None,
+            "messages": [human_message]
         }
         
         config = {
             "configurable": {
                 "thread_id": session_id,
-                "image_path": image_path
+                "image_path": image_attachment["path"] if image_attachment else None
             }
         }
         
@@ -75,7 +74,7 @@ async def chat_endpoint(
         
         final_response = result.get("final_response", "Failed to generate a response.")
         
-        return {
+        response = {
             "status": "success",
             "query": query,
             "response": final_response,
@@ -83,6 +82,10 @@ async def chat_endpoint(
             "selected_agents": result.get("selected_agents", []),
             "agent_responses": result.get("agent_responses", {})
         }
+        completed = True
+        return response
+    except HTTPException:
+        raise
     except InvalidImageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except HFAuthenticationError as e:
@@ -94,8 +97,8 @@ async def chat_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Graph execution failed: {e}")
     finally:
-        if image_path and os.path.exists(image_path):
-            os.remove(image_path)
+        if not completed and image_attachment:
+            remove_stored_image(image_attachment.get("path"))
 
 @chat_router.get("/chat/{session_id}", tags=["Chat"])
 async def get_chat_history(session_id: str, request: Request):
@@ -125,11 +128,23 @@ async def get_chat_history(session_id: str, request: Request):
                 msg_type = "human" if "HumanMessage" in str(type(msg)) else "ai"
                 
             if msg_type == "human":
-                formatted_messages.append({"role": "user", "content": msg.content})
+                formatted = {"role": "user", "content": msg.content}
+                attachment = getattr(msg, "additional_kwargs", {}).get("image_attachment")
+                if attachment:
+                    image = image_as_data_url(attachment.get("path", ""), attachment.get("content_type", ""))
+                    if image:
+                        formatted["image"] = {
+                            "data_url": image,
+                            "filename": attachment.get("filename", "image"),
+                            "content_type": attachment.get("content_type", "image/jpeg"),
+                            "size": attachment.get("size", 0),
+                        }
+                formatted_messages.append(formatted)
             elif msg_type == "ai":
                 formatted_messages.append({"role": "assistant", "content": msg.content})
                 
         return {"session_id": session_id, "messages": formatted_messages}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch history: {e}")
-
