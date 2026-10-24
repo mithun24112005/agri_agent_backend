@@ -26,7 +26,7 @@ You → Receptionist Desk (FastAPI)
        [5] Supervisor: Decide which specialist(s) to call
        ↓
        [6] Call the specialist agents (in parallel if multiple)
-              - Disease Agent (image + RAG database)
+              - Disease Agent (local vision API :8000 + RAG database)
               - Crop Agent (Random Forest ML model)
               - General Agent (live Tavily web search)
        ↓

@@ -27,11 +27,15 @@ class SupervisorState(TypedDict):
 
 class DiseaseState(TypedDict):
     image_path: Optional[str]
-    prediction: Optional[str] # Main disease string
-    detection_result: Optional[Dict[str, Any]] # Rich HF detector output
+    prediction: Optional[str] # Canonical PlantVillage disease string (e.g. Apple___Apple_scab)
+    detection_result: Optional[Dict[str, Any]] # Rich local detector output
     question: str
     disease_id: Optional[str]
     crop: Optional[str]
+    disease_title: Optional[str]
+    is_healthy: Optional[bool]
+    rag_status: Optional[str]
+    sources: Optional[List[str]]
     intents: Optional[List[str]]
     context: Optional[str]
     response: Optional[str]

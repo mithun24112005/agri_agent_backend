@@ -24,9 +24,14 @@ class Settings(BaseSettings):
     # Vector DB
     qdrant_url: str = Field("http://localhost:6333", env="QDRANT_URL")
     
-    # Disease Detection (HF Inference API)
+    # Disease Detection (Local FastAPI Service)
+    disease_api_url: str = Field("http://127.0.0.1:8000", env="DISEASE_API_URL")
+    disease_api_timeout_seconds: float = Field(30.0, env="DISEASE_API_TIMEOUT_SECONDS")
+    disease_api_connect_timeout_seconds: float = Field(5.0, env="DISEASE_API_CONNECT_TIMEOUT_SECONDS")
+    disease_confidence_threshold: float = Field(0.50, env="DISEASE_CONFIDENCE_THRESHOLD")
+    
+    # Disease Detection (HF Fallback / Legacy params)
     hf_disease_model: str = Field("linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification", env="HF_DISEASE_MODEL")
-    disease_confidence_threshold: float = Field(0.80, env="DISEASE_CONFIDENCE_THRESHOLD")
     hf_timeout_seconds: int = Field(15, env="HF_TIMEOUT_SECONDS")
     hf_max_retries: int = Field(3, env="HF_MAX_RETRIES")
     

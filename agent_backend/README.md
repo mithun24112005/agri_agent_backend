@@ -97,7 +97,7 @@ flowchart TD
     Run --> Crop
     Run --> General
 
-    Disease --> DAPI["Hugging Face Inference API<br/>linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification"]
+    Disease --> DAPI["Local Disease Detection Service<br/>FastAPI :8000 (EfficientNetB4)"]
     Disease --> QD[("Qdrant<br/>plant_diseases")]
     Disease --> HF["HuggingFace<br/>bge-m3 embeddings"]
     Crop --> RF["scikit-learn<br/>Random Forest"]
@@ -194,7 +194,7 @@ Memory balances completeness with the practical limits of an LLM context window.
 | **Config & Validation** | `pydantic-settings` · `python-dotenv` |
 | **HTTP Client** | `httpx` & `huggingface_hub` |
 | **Observability** | LangSmith (optional) |
-| **Disease Classification** | Hugging Face Inference API (`mobilenet_v2`) |
+| **Disease Classification** | Local FastAPI Service (`http://127.0.0.1:8000`) · EfficientNetB4 |
 
 ---
 
@@ -245,7 +245,7 @@ Before running the backend, make sure you have:
 - **Python 3.13** and the **[`uv`](https://docs.astral.sh/uv/)** package manager
 - **Docker** (to run Qdrant), or access to an existing Qdrant instance
 - **API keys**: [Groq](https://console.groq.com/), [HuggingFace](https://huggingface.co/settings/tokens) (for embeddings), and [Tavily](https://tavily.com/)
-- A valid Hugging Face Token (`HF_TOKEN`) for the disease classification model.
+- Local Disease Detection API running at `http://127.0.0.1:8000` (FastAPI with trained model)
 - **Data & model assets** (not included in the repo):
   - `agents/models/crop_recommendation_rf_model.pkl` and `agents/models/target_encoder.pkl`
   - Disease knowledge JSON files under `agents/diseases/`
@@ -284,9 +284,17 @@ Qdrant will be available at `http://localhost:6333`.
 
 Place the Random Forest artifacts in `agents/models/`, the disease JSON files in `agents/diseases/`, and seed the `plant_diseases` and `crop_knowledge` Qdrant collections.
 
-### 5. Start the Application
+### 5. Start the Local Disease Detection Service & Backend
 
-The disease detection uses the remote Hugging Face Inference API, so you do not need to run a local model server. Just ensure `HF_TOKEN` is set.
+Start your local disease detection service on port 8000:
+```bash
+# In your local disease detection service repository:
+uvicorn api.main:app --host 127.0.0.1 --port 8000
+```
+Then start the multi-agent backend on port 8001:
+```bash
+uv run uvicorn main:app --host 0.0.0.0 --port 8001
+```
 
 ### 6. Configure environment variables
 
@@ -306,8 +314,9 @@ TAVILY_API_KEY=your_tavily_api_key      # web search
 
 # ── External services (defaults shown) ───────────────────
 QDRANT_URL=http://localhost:6333
-HF_TOKEN=your_huggingface_token
-HF_DISEASE_MODEL=linkanjarad/mobilenet_v2_1.0_224-plant-disease-identification
+DISEASE_API_URL=http://127.0.0.1:8000
+DISEASE_API_TIMEOUT_SECONDS=30.0
+DISEASE_CONFIDENCE_THRESHOLD=0.50
 
 # ── Session memory (defaults shown) ──────────────────────
 SESSION_CHECKPOINTER_BACKEND=sqlite
@@ -329,8 +338,9 @@ LANGSMITH_PROJECT=smart-agriculture
 | `HF_TOKEN` | ✅ | — | HuggingFace token for `bge-m3` embeddings. |
 | `TAVILY_API_KEY` | ✅ | — | Tavily key for the General Agent's web search. |
 | `QDRANT_URL` | — | `http://localhost:6333` | Qdrant endpoint. |
-| `HF_TOKEN` | — | `None` | Your Hugging Face API token for remote disease inference. |
-| `HF_DISEASE_MODEL` | — | `linkanjarad/mobilenet_v2...` | The Hugging Face repo ID for disease classification. |
+| `DISEASE_API_URL` | — | `http://127.0.0.1:8000` | Local disease detection service URL. |
+| `DISEASE_API_TIMEOUT_SECONDS` | — | `30.0` | Timeout in seconds for disease prediction calls. |
+| `DISEASE_CONFIDENCE_THRESHOLD` | — | `0.50` | Minimum confidence required for valid diagnosis. |
 | `SESSION_CHECKPOINTER_BACKEND` | — | `sqlite` | Memory backend (SQLite today; pluggable). |
 | `SESSION_CHECKPOINT_DB_PATH` | — | `./storage/checkpoints/langgraph.db` | SQLite checkpoint file path. |
 | `MAX_CONVERSATION_MESSAGES` | — | `20` | Upper bound for retained conversation messages. |

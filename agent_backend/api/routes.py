@@ -2,12 +2,14 @@ from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Request, D
 from langchain_core.messages import HumanMessage
 from typing import Optional
 from services.disease_detection.exceptions import (
+    LocalAPIUnavailableError,
+    LocalAPITimeoutError,
+    LocalAPIResponseError,
+    InvalidImageError,
+    DiseaseDetectionError,
     HFNetworkError,
     HFTimeoutError,
-    HFAuthenticationError,
-    HFServiceError,
-    InvalidImageError,
-    DiseaseDetectionError
+    HFServiceError
 )
 import os
 from services.image_storage import image_as_data_url, remove_stored_image, save_uploaded_image
@@ -88,12 +90,14 @@ async def chat_endpoint(
         raise
     except InvalidImageError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except HFAuthenticationError as e:
-        raise HTTPException(status_code=500, detail=f"Configuration Error: {e}")
-    except (HFNetworkError, HFTimeoutError, HFServiceError) as e:
-        raise HTTPException(status_code=502, detail=f"External Detection Service Error: {e}")
+    except LocalAPIUnavailableError as e:
+        raise HTTPException(status_code=503, detail=f"Local Disease Detection Service Unavailable: {e}")
+    except LocalAPITimeoutError as e:
+        raise HTTPException(status_code=504, detail=f"Local Disease Detection Service Timeout: {e}")
+    except LocalAPIResponseError as e:
+        raise HTTPException(status_code=502, detail=f"Local Disease Detection Service Response Error: {e}")
     except DiseaseDetectionError as e:
-        raise HTTPException(status_code=500, detail=f"Detection failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Disease detection failed: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Graph execution failed: {e}")
     finally:
