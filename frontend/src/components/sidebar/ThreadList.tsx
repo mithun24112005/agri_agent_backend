@@ -29,5 +29,5 @@ export function ThreadList() {
 }
 
 export function NewChatButton() {
-  return <ThreadListPrimitive.New className="new-chat-button"><Plus size={17} /><span>New conversation</span><kbd>⌘ K</kbd></ThreadListPrimitive.New>;
+  return <ThreadListPrimitive.New className="new-chat-button"><Plus size={17} /><span>New conversation</span></ThreadListPrimitive.New>;
 }

@@ -1,7 +1,5 @@
-import { fromThreadMessageLike, type ChatModelAdapter, type CompleteAttachment, type ThreadMessage, type ThreadMessageLike } from "@assistant-ui/react";
+import { fromThreadMessageLike, type ChatModelAdapter, type CompleteAttachment, type ThreadAssistantMessagePart, type ThreadMessage, type ThreadMessageLike } from "@assistant-ui/react";
 import { chatApi } from "@/lib/api/chat";
-import { activityStore } from "./activity";
-import type { AgentName } from "@/types/api";
 import type { ChatMessage } from "@/types/api";
 
 function getText(message: ThreadMessage): string {
@@ -23,25 +21,99 @@ function getImageFile(message: ThreadMessage): File | undefined {
 }
 
 export const gatewayModelAdapter: ChatModelAdapter = {
-  async run({ messages, abortSignal, unstable_threadId }) {
+  async *run({ messages, abortSignal, unstable_threadId }) {
     const userMessage = [...messages].reverse().find((message) => message.role === "user");
     if (!userMessage || !unstable_threadId) throw new Error("Choose a conversation before sending a message.");
     const query = getText(userMessage);
     if (!query) throw new Error("Please add a question before sending.");
 
-    activityStore.set({ status: "processing", agents: [], selectedCount: 0 });
-    try {
-      const result = await chatApi.send(query, unstable_threadId, getImageFile(userMessage), abortSignal);
-      const agents = result.selected_agents.filter((agent): agent is AgentName => ["disease_agent", "crop_agent", "general_agent"].includes(agent));
-      activityStore.set({ status: "complete", agents, selectedCount: agents.length });
-      return {
-        content: [{ type: "text", text: result.response }],
-        metadata: { custom: { selected_agents: agents, agent_responses: result.agent_responses } },
+    const metadata = { custom: { selected_agents: [], agent_responses: {} } };
+
+    // 1. Initial running tool call while LangGraph backend is processing
+    const initialRoutingPart: ThreadAssistantMessagePart = {
+      type: "tool-call",
+      toolCallId: `call-${Date.now()}-routing`,
+      toolName: "routing",
+      args: { query },
+      argsText: JSON.stringify({ query }),
+    };
+    yield { content: [initialRoutingPart], metadata };
+
+    // 2. Fetch response from gateway API
+    const result = await chatApi.send(query, unstable_threadId, getImageFile(userMessage), abortSignal);
+
+    // 3. Extract agents and responses
+    const selectedAgents = (
+      result.selected_agents && result.selected_agents.length > 0
+        ? result.selected_agents
+        : Object.keys(result.agent_responses || {})
+    ).filter(Boolean);
+
+    const agentsToDisplay = selectedAgents.length > 0 ? selectedAgents : ["general_agent"];
+    const custom = {
+      selected_agents: agentsToDisplay,
+      agent_responses: result.agent_responses || {},
+    };
+
+    // 4. Construct completed tool parts for all invoked agents
+    const toolParts: ThreadAssistantMessagePart[] = agentsToDisplay.map((agent, index) => ({
+      type: "tool-call",
+      toolCallId: `call-${Date.now()}-${index}-${agent}`,
+      toolName: agent,
+      args: { query },
+      argsText: JSON.stringify({ query }),
+      result: result.agent_responses?.[agent] ?? null,
+    }));
+
+    // 5. Determine the response text to render
+    const rawResponse = result.response?.trim();
+    const fallbackResponse = Object.values(result.agent_responses || {}).find(
+      (v): v is string => typeof v === "string" && v.trim().length > 0
+    );
+    const responseText = rawResponse || fallbackResponse || "Analysis completed.";
+
+    // 6. Smooth progressive streaming of response text
+    const chunkSize = 24;
+    if (responseText.length <= chunkSize) {
+      yield {
+        content: [
+          ...toolParts,
+          {
+            type: "text",
+            text: responseText,
+            status: { type: "complete" },
+          },
+        ],
+        metadata: { custom },
       };
-    } catch (error) {
-      const isAbort = error instanceof Error && error.name === "AbortError";
-      activityStore.set(isAbort ? { status: "idle", agents: [], selectedCount: 0 } : { status: "error", agents: [], selectedCount: 0 });
-      throw error;
+    } else {
+      for (let i = chunkSize; i < responseText.length; i += chunkSize) {
+        if (abortSignal.aborted) throw new DOMException("The response was stopped.", "AbortError");
+        yield {
+          content: [
+            ...toolParts,
+            {
+              type: "text",
+              text: responseText.slice(0, i),
+              status: { type: "running" },
+            },
+          ],
+          metadata: { custom },
+        };
+        await new Promise((resolve) => setTimeout(resolve, 14));
+      }
+
+      yield {
+        content: [
+          ...toolParts,
+          {
+            type: "text",
+            text: responseText,
+            status: { type: "complete" },
+          },
+        ],
+        metadata: { custom },
+      };
     }
   },
 };

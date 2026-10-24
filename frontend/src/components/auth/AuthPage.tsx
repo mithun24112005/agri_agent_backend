@@ -30,8 +30,8 @@ export function AuthPage() {
     try {
       if (mode === "register") {
         await authApi.register(email.trim(), password);
-        setNotice("Account created. Sign in to start a new field note.");
         switchMode("login");
+        setNotice("Account created. Sign in to start a new field note.");
       } else {
         await signIn(email.trim(), password);
       }
@@ -46,7 +46,7 @@ export function AuthPage() {
     <main className="auth-page">
       <div className="auth-atmosphere" aria-hidden="true" />
       <section className="auth-panel">
-        <div className="auth-brand"><span className="brand-mark"><Leaf size={18} strokeWidth={2.3} /></span><span>AgriMind</span></div>
+        <div className="auth-brand"><span className="brand-mark"><Leaf size={17} strokeWidth={2.3} /></span><span>CropSage</span></div>
         <div className="auth-copy">
           <p className="eyebrow">Field intelligence, clarified</p>
           <h1>Good decisions<br /><em>start with context.</em></h1>
@@ -70,9 +70,9 @@ export function AuthPage() {
             {mode === "register" && <><label className="field-label" htmlFor="confirm-password">Confirm password</label><div className="field-control"><LockKeyhole size={17} /><input id="confirm-password" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Repeat your password" /></div></>}
             {error && <div className="form-alert error" role="alert">{error}</div>}
             {notice && <div className="form-alert success" role="status">{notice}</div>}
-            <button className="primary-button auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}{isSubmitting ? "Working…" : mode === "login" ? "Enter AgriMind" : "Create account"}</button>
+            <button className="primary-button auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />}{isSubmitting ? "Working…" : mode === "login" ? "Sign in" : "Create account"}</button>
           </form>
-          <p className="auth-footnote">By continuing, you agree to use AgriMind for responsible agricultural decisions.</p>
+          <p className="auth-footnote">By continuing, you agree to use CropSage for responsible agricultural decisions.</p>
         </div>
       </section>
     </main>

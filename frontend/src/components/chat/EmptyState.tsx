@@ -9,5 +9,5 @@ const suggestions = [
 ];
 
 export function EmptyState() {
-  return <div className="empty-state"><div className="empty-orbit"><div className="empty-seed"><Sprout size={23} /></div></div><p className="eyebrow">Your agriculture desk</p><h1>What are you<br /><em>cultivating today?</em></h1><p className="empty-description">Ask about crops, soil, plant health, or the decisions that keep a season moving.</p><div className="suggestion-grid">{suggestions.map(({ icon: Icon, text, prompt }) => <ThreadPrimitive.Suggestion key={text} prompt={prompt} send className="suggestion-card"><Icon size={17} /><span>{text}</span></ThreadPrimitive.Suggestion>)}</div></div>;
+  return <div className="empty-state"><p className="eyebrow">CropSage assistant</p><h1>How can I help you today?</h1><p className="empty-description">Ask about crop selection, plant health, soil conditions, or practical agricultural questions.</p><div className="suggestion-grid">{suggestions.map(({ icon: Icon, text, prompt }) => <ThreadPrimitive.Suggestion key={text} prompt={prompt} send className="suggestion-card"><Icon size={16} /><span>{text}</span></ThreadPrimitive.Suggestion>)}</div></div>;
 }
