@@ -186,4 +186,4 @@ curl -X POST http://127.0.0.1:3001/api/auth/register -H "Content-Type: applicati
 - **503 Service Unavailable:** Redis is down. Check your Redis container.
 - **403 Forbidden on FastAPI:** Make sure the `INTERNAL_API_SECRET` in `agent_backend/.env` exactly matches `INTERNAL_API_SECRET` in `gateway/.env`.
 - **413 Payload Too Large:** The image uploaded to the chat exceeds the 5MB limit.
-- **Prisma Error (P2021/P2002):** The SQLite database isn't initialized or in sync. Delete `agent_backend/storage/auth/auth.db` and run `npx prisma migrate dev --name init`.
+- **Prisma Error (P2021/P2002):** The PostgreSQL database isn't initialized or in sync. Ensure PostgreSQL is running and run `npx prisma migrate deploy` (or `npx prisma migrate dev` in development).

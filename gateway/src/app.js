@@ -33,14 +33,20 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms [R
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const prisma = require('./config/database');
+
 // Health Check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', gateway: 'active' });
 });
 
 app.get('/health/ready', async (req, res) => {
-  // Add deeper checks later if needed
-  res.json({ status: 'ok', gateway: 'ready' });
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok', gateway: 'ready', database: 'connected' });
+  } catch (error) {
+    res.status(503).json({ status: 'degraded', gateway: 'ready', database: 'disconnected' });
+  }
 });
 
 // API Routes

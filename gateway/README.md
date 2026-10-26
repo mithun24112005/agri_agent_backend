@@ -16,7 +16,7 @@ The Gateway serves as the public-facing entry point to the system, acting as a s
 
 * **Runtime**: Node.js
 * **Framework**: Express.js
-* **Database**: SQLite (via Prisma ORM)
+* **Database**: PostgreSQL (via Prisma ORM)
 * **Caching/Rate Limiting**: Redis
 * **Security**: Helmet, CORS, Argon2 (Password Hashing), JSON Web Tokens (JWT)
 * **Validation**: Zod
@@ -30,20 +30,20 @@ graph LR
     subgraph Gateway Layer
         Gateway --> Auth[Auth & Sessions]
         Gateway --> RL[Redis Rate Limiter]
-        Auth --> DB[(SQLite: auth.db)]
+        Auth --> DB[(PostgreSQL: agri_auth)]
     end
     
     Gateway -->|Internal API Key| FastAPI[FastAPI AI Backend :8001]
     
     subgraph AI Layer
         FastAPI --> LangGraph[LangGraph Agents]
-        LangGraph --> StateDB[(SQLite: langgraph.db)]
+        LangGraph --> StateDB[(PostgreSQL: agri_memory)]
     end
 ```
 
 ## ⚙️ Environment Variables
 
-Create a `.env` file in this directory with the following variables:
+Create a `.env` file in this directory (or copy from `.env.example`):
 
 ```env
 # Server Configuration
@@ -51,17 +51,18 @@ NODE_ENV=development
 PORT=3001
 FRONTEND_ORIGIN=http://localhost:5173
 
-# Database Configuration (Relative to prisma folder)
-DATABASE_URL="file:../../agent_backend/storage/auth/auth.db"
+# Database Configuration (PostgreSQL agri_auth)
+DATABASE_URL="postgresql://postgres:root@localhost:5432/agri_auth?schema=public"
 
 # JWT Configuration
-JWT_SECRET=your_super_secret_jwt_key_here
-JWT_EXPIRES_IN=15m
-REFRESH_TOKEN_SECRET=your_super_secret_refresh_key_here
-REFRESH_TOKEN_EXPIRES_IN=7d
+JWT_ACCESS_SECRET=your_super_secret_jwt_key_here
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_SECRET=your_super_secret_refresh_key_here
+JWT_REFRESH_EXPIRES_IN=7d
 
 # Internal API Authentication
 INTERNAL_API_SECRET=super_secret_internal_key
+FASTAPI_BASE_URL=http://localhost:8001
 
 # Redis Configuration (Rate Limiting)
 REDIS_URL=redis://127.0.0.1:6379
@@ -75,9 +76,9 @@ npm install
 ```
 
 ### 2. Setup the Database
-Push the Prisma schema to create the SQLite database tables:
+Apply Prisma migrations to create and sync the PostgreSQL database tables:
 ```bash
-npx prisma db push
+npx prisma migrate deploy
 ```
 
 ### 3. Start the Server

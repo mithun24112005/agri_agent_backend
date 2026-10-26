@@ -79,7 +79,7 @@ curl -X POST "http://localhost:8001/api/chat" \
 ---
 
 ## 4. Test Memory / Conversation Context
-Because you are passing a `session_id`, the agent remembers previous interactions via the SQLite checkpointer.
+Because you are passing a `session_id`, the agent remembers previous interactions via the PostgreSQL checkpointer.
 
 ### Test E: Contextual Follow-up
 Run this immediately after Test A or Test B using the **same** `session_id`:

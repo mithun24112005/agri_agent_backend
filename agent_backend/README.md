@@ -51,7 +51,7 @@ Conversations are **session-scoped and persistent**, so a farmer can upload an i
 - **🖼️ Disease Agent V2 (Vision + Intent-Driven RAG)** — Intercepts uploaded images via an ML classification service, maps the prediction, and uses a highly optimized **Qdrant** vector pipeline. V2 features semantic section-chunking, rich metadata payload indexing, and an LLM intent classifier to extract exact answers (symptoms, causes, organic/chemical control) with confidence-aware retrieval fallbacks.
 - **🌱 Crop Recommendation Agent** — Extracts agronomic parameters (N, P, K, temperature, humidity, pH, rainfall) from natural language, runs a local **scikit-learn Random Forest** model, and explains *why* the recommended crop fits.
 - **🔎 General Agent (Live Web Search)** — Uses **Tavily** to retrieve up-to-date information (market prices, best practices, sustainability) and answers strictly from the gathered evidence.
-- **🧠 Session-Scoped Memory** — SQLite checkpointers persist every conversation turn per `session_id`, with structured results (last disease, last crop) carried forward so follow-ups work without re-uploading images.
+- **🧠 Session-Scoped Memory** — PostgreSQL checkpointers persist every conversation turn per `session_id` in `agri_memory`, with structured results (last disease, last crop) carried forward so follow-ups work without re-uploading images.
 - **🛡️ Guardrails** — Built-in **PII sanitization** (names, emails, phones, locations → `[REDACTED]`) and a **domain guardrail** that politely rejects non-agriculture queries.
 - **♻️ Resilience** — Exponential-backoff retry logic wraps LLM calls to absorb transient upstream errors (rate limits, 5xx, tool-choice hiccups).
 - **📊 Observability** — Optional end-to-end tracing via **LangSmith**.
@@ -110,8 +110,8 @@ flowchart TD
     Format -.-> LLM
 
     Format --> API
-    API <-->|"read / write history"| DB[("SQLite<br/>langgraph.db")]
-    Gateway <-->|"Users / Sessions"| AuthDB[("SQLite<br/>auth.db")]
+    API <-->|"read / write history"| DB[("PostgreSQL<br/>agri_memory")]
+    Gateway <-->|"Users / Sessions"| AuthDB[("PostgreSQL<br/>agri_auth")]
 ```
 
 ### Component responsibilities
@@ -125,7 +125,7 @@ flowchart TD
 | **Disease** | `agents/disease/*` | V2 RAG Pipeline: `ingest.py`, `normalizer.py`, `chunker.py`, intent classifier, and V2 Retriever with semantic fallback. |
 | **Crop** | `agents/crop/*`, `services/crop_model.py` | `validate → predict → retrieve → build context → reason` (Random Forest + RAG). |
 | **General** | `agents/general/graph.py` | `validate → search → process evidence → reason` (Tavily-grounded). |
-| **State & Memory** | `graph/state.py`, `graph/persistence.py` | Typed `TypedDict` states and the SQLite checkpointer factory. |
+| **State & Memory** | `graph/state.py`, `graph/persistence.py` | Typed `TypedDict` states and the PostgreSQL checkpointer factory. |
 | **Config** | `config/settings.py` | `pydantic-settings`-based configuration from environment. |
 
 
@@ -137,7 +137,7 @@ Every call to `/chat` flows through the pipeline below. Think of it as a recepti
 
 ```mermaid
 flowchart LR
-    A["1 · Receive query<br/>+ optional image"] --> B["2 · Persist message<br/>to SQLite"]
+    A["1 · Receive query<br/>+ optional image"] --> B["2 · Persist message<br/>to PostgreSQL"]
     B --> C["3 · Load last 6 msgs<br/>as context"]
     C --> D["4 · PII sanitization"]
     D --> E{"5 · Agriculture<br/>related?"}
@@ -165,11 +165,11 @@ Memory balances completeness with the practical limits of an LLM context window.
 
 | Layer | Where it lives | Persists across restarts? |
 |-------|----------------|:-------------------------:|
-| Full message history and image metadata | `storage/checkpoints/langgraph.db` (SQLite) | ✅ |
+| Full message history and image metadata | PostgreSQL database (`agri_memory`) | ✅ |
 | Uploaded image files | `storage/uploads/` (ignored durable file storage) | ✅ |
 | Active context (rolling window) | Rebuilt per request from the last **6 messages** | ❌ (recomputed) |
-| Last disease result (prediction, disease id, crop) | SQLite checkpoint state | ✅ |
-| Last crop result (recommended crop, features) | SQLite checkpoint state | ✅ |
+| Last disease result (prediction, disease id, crop) | PostgreSQL checkpoint state | ✅ |
+| Last crop result (recommended crop, features) | PostgreSQL checkpoint state | ✅ |
 
 **Everything is stored; only the most recent ~3 turns are actively reasoned over.** This keeps requests fast, cheap, and safely under the model's context limit. Because the last disease/crop results are stored as structured state, the Disease Agent can answer follow-ups (e.g. "what's the chemical control for it?") **without a new image upload**. Memory is strictly isolated per `session_id`.
 
@@ -184,13 +184,13 @@ Memory balances completeness with the practical limits of an LLM context window.
 | **Language** | Python 3.13 |
 | **Packaging / Env** | [`uv`](https://docs.astral.sh/uv/) (with `pyproject.toml` + `uv.lock`) |
 | **API Framework** | FastAPI + Uvicorn (ASGI) |
-| **Agent Orchestration** | LangGraph · LangChain · `langgraph-checkpoint-sqlite` |
+| **Agent Orchestration** | LangGraph · LangChain · `langgraph-checkpoint-postgres` |
 | **LLM Provider** | Groq — `openai/gpt-oss-120b` |
 | **Embeddings** | HuggingFace Inference API — `BAAI/bge-m3` |
 | **Vector Database** | Qdrant (collections: `disease_knowledge_v2`, `crop_knowledge`) |
 | **Classical ML** | scikit-learn (Random Forest) · joblib · pandas |
 | **Web Search** | Tavily |
-| **Session Persistence** | SQLite via `AsyncSqliteSaver` (`aiosqlite`) |
+| **Session Persistence** | PostgreSQL via `AsyncPostgresSaver` (`psycopg`) |
 | **Config & Validation** | `pydantic-settings` · `python-dotenv` |
 | **HTTP Client** | `httpx` & `huggingface_hub` |
 | **Observability** | LangSmith (optional) |
@@ -210,7 +210,7 @@ agent_backend/
 ├── graph/
 │   ├── main_graph.py           # Main orchestration graph (classify → run → format)
 │   ├── state.py                # Typed state definitions (TypedDict)
-│   └── persistence.py          # SQLite checkpointer factory
+│   └── persistence.py          # PostgreSQL checkpointer factory
 ├── agents/
 │   ├── supervisor/graph.py     # PII → guardrail → routing
 │   ├── disease/                # Disease agent: graph, classifier, retriever, mapper
@@ -229,7 +229,7 @@ agent_backend/
 ├── config/
 │   └── settings.py             # pydantic-settings configuration
 ├── assets/                     # Sample images (e.g. AppleScab1.JPG)
-├── storage/                    # SQLite checkpoints + image uploads       ‹not tracked›
+├── storage/                    # Image uploads durable storage ‹not tracked›
 ├── Working.md                  # Memory model documentation
 └── Testing.md                  # Manual API testing guide
 ```
@@ -319,8 +319,8 @@ DISEASE_API_TIMEOUT_SECONDS=30.0
 DISEASE_CONFIDENCE_THRESHOLD=0.50
 
 # ── Session memory (defaults shown) ──────────────────────
-SESSION_CHECKPOINTER_BACKEND=sqlite
-SESSION_CHECKPOINT_DB_PATH=./storage/checkpoints/langgraph.db
+SESSION_CHECKPOINTER_BACKEND=postgres
+SESSION_CHECKPOINT_DATABASE_URL=postgresql://postgres:root@localhost:5432/agri_memory
 MAX_CONVERSATION_MESSAGES=20
 
 # ── Optional ─────────────────────────────────────────────
@@ -341,8 +341,8 @@ LANGSMITH_PROJECT=smart-agriculture
 | `DISEASE_API_URL` | — | `http://127.0.0.1:8000` | Local disease detection service URL. |
 | `DISEASE_API_TIMEOUT_SECONDS` | — | `30.0` | Timeout in seconds for disease prediction calls. |
 | `DISEASE_CONFIDENCE_THRESHOLD` | — | `0.50` | Minimum confidence required for valid diagnosis. |
-| `SESSION_CHECKPOINTER_BACKEND` | — | `sqlite` | Memory backend (SQLite today; pluggable). |
-| `SESSION_CHECKPOINT_DB_PATH` | — | `./storage/checkpoints/langgraph.db` | SQLite checkpoint file path. |
+| `SESSION_CHECKPOINTER_BACKEND` | — | `postgres` | Checkpointer backend (PostgreSQL). |
+| `SESSION_CHECKPOINT_DATABASE_URL` | ✅ | — | PostgreSQL connection string for LangGraph checkpoints (`agri_memory`). |
 | `MAX_CONVERSATION_MESSAGES` | — | `20` | Upper bound for retained conversation messages. |
 | `GOOGLE_API_KEY` | — | — | Optional Google GenAI key. |
 | `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_PROJECT` | — | — | Optional LangSmith tracing. |
@@ -458,7 +458,7 @@ The architecture is designed so these enhancements can be added without a redesi
 - **Configurable context window** — expose the rolling-window size (currently the last 6 messages) as a setting.
 - **Long-term semantic memory** — periodically summarize a session and prepend the summary to future context.
 - **Pinned entity memory** — always-available structured facts (already seeded by the stored `disease_result` / `crop_result`).
-- **PostgreSQL checkpointer** — `graph/persistence.py` is a factory built to accept additional backends beyond SQLite.
+- **Distributed checkpointer clustering** — connection pooling and read-replica scaling on PostgreSQL.
 
 ---
 

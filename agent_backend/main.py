@@ -1,3 +1,9 @@
+import sys
+import asyncio
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -15,17 +21,13 @@ async def lifespan(app: FastAPI):
     
     # Initialize checkpointer and compile graph
     async with create_checkpointer() as checkpointer:
-        await checkpointer.setup() # Initialize SQLite DB schema
-        
         app.state.checkpointer = checkpointer
         app.state.graph = build_main_graph(checkpointer=checkpointer)
-        print("Graph compiled with persistence.")
+        print("Graph compiled with PostgreSQL persistence.")
         
         yield
     # Shutdown logic
     print("Shutting down Smart Agriculture Backend...")
-    # SQLite connections are typically managed within contexts or cleaned up automatically,
-    # but we can do any explicit cleanup here if needed.
 
 app = FastAPI(
     title="Smart Agriculture Multi-Agent Backend",
@@ -48,8 +50,18 @@ api_router = APIRouter()
 
 @api_router.get("/health", tags=["Health"])
 async def health_check(request: Request):
-    # Optionally verify checkpointer is loaded
-    memory_status = "available" if hasattr(request.app.state, "checkpointer") else "unavailable"
+    memory_status = "unavailable"
+    if hasattr(request.app.state, "checkpointer"):
+        try:
+            # Verify PostgreSQL connectivity non-destructively
+            await request.app.state.checkpointer.aget_tuple(
+                {"configurable": {"thread_id": "__health_check__", "checkpoint_ns": ""}}
+            )
+            memory_status = "available"
+        except Exception as e:
+            print(f"PostgreSQL health check ping failed: {e}")
+            memory_status = "unavailable"
+
     return {
         "status": "ok", 
         "message": "Smart Agriculture Backend is healthy",
@@ -63,4 +75,10 @@ app.include_router(chat_router)
 
 if __name__ == "__main__":
     import uvicorn
+    if sys.platform == "win32":
+        try:
+            import uvicorn.loops.asyncio
+            uvicorn.loops.asyncio.asyncio_loop_factory = lambda use_subprocess=False: asyncio.SelectorEventLoop
+        except Exception:
+            pass
     uvicorn.run("main:app", host="0.0.0.0", port=8001, reload=True)

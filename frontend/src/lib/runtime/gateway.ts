@@ -1,5 +1,6 @@
 import { fromThreadMessageLike, type ChatModelAdapter, type CompleteAttachment, type ThreadAssistantMessagePart, type ThreadMessage, type ThreadMessageLike } from "@assistant-ui/react";
 import { chatApi } from "@/lib/api/chat";
+import { sessionsApi } from "@/lib/api/sessions";
 import type { ChatMessage } from "@/types/api";
 
 function getText(message: ThreadMessage): string {
@@ -20,12 +21,33 @@ function getImageFile(message: ThreadMessage): File | undefined {
   return undefined;
 }
 
+let activeOrPendingSessionId: string | null = null;
+
+export function setActiveSessionId(sessionId: string | null) {
+  activeOrPendingSessionId = sessionId;
+}
+
+export function getActiveSessionId(): string | null {
+  return activeOrPendingSessionId;
+}
+
 export const gatewayModelAdapter: ChatModelAdapter = {
   async *run({ messages, abortSignal, unstable_threadId }) {
     const userMessage = [...messages].reverse().find((message) => message.role === "user");
-    if (!userMessage || !unstable_threadId) throw new Error("Choose a conversation before sending a message.");
+    if (!userMessage) throw new Error("Please add a question before sending.");
     const query = getText(userMessage);
     if (!query) throw new Error("Please add a question before sending.");
+
+    let sessionId = unstable_threadId || activeOrPendingSessionId;
+    if (!sessionId) {
+      try {
+        const newSession = await sessionsApi.create("New conversation");
+        sessionId = newSession.id;
+      } catch {
+        throw new Error("Choose a conversation before sending a message.");
+      }
+    }
+    setActiveSessionId(sessionId);
 
     const metadata = { custom: { selected_agents: [], agent_responses: {} } };
 
@@ -40,7 +62,7 @@ export const gatewayModelAdapter: ChatModelAdapter = {
     yield { content: [initialRoutingPart], metadata };
 
     // 2. Fetch response from gateway API
-    const result = await chatApi.send(query, unstable_threadId, getImageFile(userMessage), abortSignal);
+    const result = await chatApi.send(query, sessionId, getImageFile(userMessage), abortSignal);
 
     // 3. Extract agents and responses
     const selectedAgents = (

@@ -9,7 +9,7 @@ import {
 } from "@assistant-ui/react";
 import { sessionsApi } from "@/lib/api/sessions";
 import { chatApi } from "@/lib/api/chat";
-import { historyMessage } from "./gateway";
+import { historyMessage, setActiveSessionId } from "./gateway";
 import { gatewayAttachmentAdapter } from "./attachments";
 
 function ThreadAdapters({ children }: { children?: ReactNode }) {
@@ -18,6 +18,7 @@ function ThreadAdapters({ children }: { children?: ReactNode }) {
     async load() {
       const { remoteId } = aui.threadListItem.getState();
       if (!remoteId) return { messages: [] };
+      setActiveSessionId(remoteId);
       const response = await chatApi.history(remoteId);
       const messages = response.messages.map((message, index) => ({
         message: historyMessage(message, index, remoteId),
@@ -50,6 +51,7 @@ export const gatewayThreadListAdapter: RemoteThreadListAdapter = {
   },
   async initialize() {
     const session = await sessionsApi.create("New conversation");
+    setActiveSessionId(session.id);
     return { remoteId: session.id, externalId: session.id };
   },
   async rename(remoteId, title) {

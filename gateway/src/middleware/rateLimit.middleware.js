@@ -5,7 +5,11 @@ const env = require('../config/env');
 
 // Redis Client
 const redisClient = createClient({
-  url: env.REDIS_URL
+  url: env.REDIS_URL,
+  socket: {
+    reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
+    connectTimeout: 5000,
+  }
 });
 
 redisClient.on('error', (err) => console.error('[Redis Error]', err));
@@ -14,7 +18,9 @@ redisClient.on('connect', () => console.log('Redis connected for rate limiting')
 // Attempt connection but don't crash if it fails
 (async () => {
   try {
-    await redisClient.connect();
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+    }
   } catch (err) {
     console.error('Initial Redis connection failed:', err);
   }
@@ -23,6 +29,7 @@ redisClient.on('connect', () => console.log('Redis connected for rate limiting')
 // Create rate limiter factory
 const createLimiter = (options) => {
   return rateLimit({
+    validate: { keyGeneratorIpFallback: false },
     store: new RedisStore({
       sendCommand: (...args) => redisClient.sendCommand(args),
       prefix: options.prefix

@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, SecretStr, field_validator
 from typing import Optional
 import os
 from pathlib import Path
@@ -41,9 +41,19 @@ class Settings(BaseSettings):
     langchain_project: Optional[str] = Field(None, env="LANGSMITH_PROJECT")
 
     # Session Memory
-    session_checkpointer_backend: str = Field("sqlite", env="SESSION_CHECKPOINTER_BACKEND")
-    session_checkpoint_db_path: str = Field("./storage/checkpoints/langgraph.db", env="SESSION_CHECKPOINT_DB_PATH")
+    session_checkpointer_backend: str = Field("postgres", env="SESSION_CHECKPOINTER_BACKEND")
+    session_checkpoint_database_url: Optional[SecretStr] = Field(None, env="SESSION_CHECKPOINT_DATABASE_URL")
     max_conversation_messages: int = Field(20, env="MAX_CONVERSATION_MESSAGES")
+
+    @field_validator("session_checkpointer_backend")
+    @classmethod
+    def validate_backend(cls, v: str) -> str:
+        if v.lower() != "postgres":
+            raise ValueError(
+                f"Unsupported checkpointer backend: '{v}'. "
+                "Only 'postgres' is supported. Set SESSION_CHECKPOINTER_BACKEND=postgres"
+            )
+        return v.lower()
 
     # Project Paths
     base_dir: Path = PROJECT_ROOT

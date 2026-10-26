@@ -13,7 +13,7 @@ Here is exactly what happens every time you hit **Send**:
 ```
 You → Receptionist Desk (FastAPI)
        ↓
-       [1] Save your message to the SQLite database
+       [1] Save your message to the PostgreSQL database
        ↓
        [2] Fetch the last 6 messages from that database as "context"
        ↓
@@ -32,7 +32,7 @@ You → Receptionist Desk (FastAPI)
        ↓
        [7] Merge all specialist answers into one clean response
        ↓
-       [8] Save the AI response to the SQLite database
+       [8] Save the AI response to the PostgreSQL database
        ↓
        [9] Return the response to you
 ```
@@ -42,7 +42,7 @@ You → Receptionist Desk (FastAPI)
 ## 📦 How Many Messages Can a Session Hold?
 
 ### In the Database (Total Storage)
-**Unlimited.** The SQLite database stores **every single message** in a session forever (until the database file is deleted). There is no built-in cap. As long as you use the same `session_id`, every conversation turn is saved.
+**Unlimited.** The PostgreSQL database stores **every single message** in a session forever (in `agri_memory`). There is no built-in cap. As long as you use the same `session_id`, every conversation turn is saved.
 
 ### In the "Active Context" Passed to the AI (Working Memory)
 This is where the limit kicks in. At each turn, we only send the **last 6 messages** to the AI agents for context. This is controlled in the code at `graph/main_graph.py`:
@@ -75,7 +75,7 @@ Let's say you have been chatting for 50 turns. Here is exactly what happens:
 
 | What is stored | What the AI "sees" |
 |---|---|
-| All 100 messages (50 questions + 50 answers) saved in SQLite database | Only the most recent 6 messages (the last 3 turns) |
+| All 100 messages (50 questions + 50 answers) saved in PostgreSQL database | Only the most recent 6 messages (the last 3 turns) |
 
 ### Example:
 - **Turn 1**: You uploaded an apple scab image → AI identified Apple Scab.
@@ -108,10 +108,10 @@ Important facts extracted from early in the conversation (like "disease = Apple 
 
 | Layer | Location | Persists? |
 |---|---|---|
-| All raw messages | `storage/checkpoints/langgraph.db` | ✅ Yes, survives server restarts |
+| All raw messages | PostgreSQL database (`agri_memory`) | ✅ Yes, survives server restarts |
 | Active context (rolling window) | In-memory at request time | ❌ No, rebuilt each request |
-| Disease result (prediction + disease ID) | SQLite checkpoint state | ✅ Yes |
-| Crop result (recommended crop) | SQLite checkpoint state | ✅ Yes |
+| Disease result (prediction + disease ID) | PostgreSQL checkpoint state | ✅ Yes |
+| Crop result (recommended crop) | PostgreSQL checkpoint state | ✅ Yes |
 
 ---
 

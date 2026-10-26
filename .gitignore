@@ -1,0 +1,119 @@
+# =============================================================================
+# CropSage Monorepo Root .gitignore
+# =============================================================================
+
+# --- Environment & Secret Configuration ---
+.env
+.env.*
+!.env.example
+*.env
+*.env.*
+!*.env.example
+
+# --- Python & Virtual Environments ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.uv/
+
+# Python static analysis & testing
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# --- Node.js & JavaScript ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Vite & build artifacts
+dist/
+build/
+.output/
+.turbo/
+.eslintcache
+.parcel-cache
+
+# --- Databases & Obsolete SQLite Files ---
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+*.sqlite3-journal
+agri_pgdata/
+pgdata/
+
+# --- Project-Specific Local Datasets & Vector Stores ---
+agent_backend/agents/qdrant_storage/
+agent_backend/agents/crop_data/
+agent_backend/agents/diseases_dataset/
+agent_backend/agents/raw_html/
+agent_backend/testdisease/
+agent_backend/storage/auth/
+agent_backend/storage/checkpoints/
+agent_backend/storage/uploads/
+
+# --- Operating System & Editor Files ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# IDEs
+.idea/
+*.sw?
+*.swo
+*.swp
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
