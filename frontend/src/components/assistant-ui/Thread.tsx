@@ -210,5 +210,31 @@ function Composer() {
 }
 
 export function AgriThread() {
-  return <ThreadPrimitive.Root className="thread-root"><ThreadPrimitive.Viewport className="thread-viewport" turnAnchor="top"><ThreadPrimitive.Empty><EmptyState /></ThreadPrimitive.Empty><div className="message-list"><ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} /></div><ThreadPrimitive.ScrollToBottom className="scroll-button" aria-label="Scroll to latest message"><ArrowDown size={14} /></ThreadPrimitive.ScrollToBottom></ThreadPrimitive.Viewport><Composer /></ThreadPrimitive.Root>;
+  return (
+    <ThreadPrimitive.Root className="thread-root">
+      <ThreadPrimitive.Viewport
+        className="thread-viewport"
+        turnAnchor="bottom"
+        autoScroll={true}
+        scrollToBottomOnRunStart={true}
+      >
+        <ThreadPrimitive.Empty>
+          <EmptyState />
+        </ThreadPrimitive.Empty>
+        <div className="message-list">
+          <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
+        </div>
+        <div className="scroll-to-bottom-anchor">
+          <ThreadPrimitive.ScrollToBottom
+            className="scroll-button"
+            behavior="smooth"
+            aria-label="Scroll to latest message"
+          >
+            <ArrowDown size={16} strokeWidth={2.2} />
+          </ThreadPrimitive.ScrollToBottom>
+        </div>
+      </ThreadPrimitive.Viewport>
+      <Composer />
+    </ThreadPrimitive.Root>
+  );
 }
