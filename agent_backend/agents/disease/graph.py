@@ -90,7 +90,14 @@ async def classifier_node(state: DiseaseState):
     """Classify the intents in the user's question with deterministic fallback."""
     try:
         intents_res = await invoke_with_retry(classifier_chain, {"question": state["question"]})
-        intents = intents_res.intents
+        if hasattr(intents_res, "intents"):
+            intents = intents_res.intents
+        elif isinstance(intents_res, dict):
+            intents = intents_res.get("intents", [])
+        elif isinstance(intents_res, list):
+            intents = intents_res
+        else:
+            intents = extract_fallback_intents(state["question"])
     except Exception as e:
         print(f"[CLASSIFIER] LLM intent classification failed ({e}). Using deterministic keyword fallback.")
         intents = extract_fallback_intents(state["question"])

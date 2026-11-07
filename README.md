@@ -51,11 +51,14 @@ Instead of relying on a monolithic prompt or single LLM call, CropSage deploys a
 
 *Use these quantified technical impact bullet points for your software engineering or AI platform resume:*
 
-- **Hierarchical Multi-Agent Orchestration**: Architected and deployed an autonomous multi-agent graph with **LangGraph** and **FastAPI**, implementing supervisor routing, dynamic fan-out, and unified response synthesis across 3 domain specialists with sub-second decision latency.
+- **Hierarchical Multi-Agent Orchestration**: Architected and deployed an autonomous multi-agent graph with **LangGraph** and **FastAPI**, implementing supervisor routing across a 12-intent taxonomy, dynamic fan-out, and unified response synthesis across 3 domain specialists with sub-second decision latency.
+- **Deterministic Supervisor Input Validation Gate**: Engineered a strict 7-parameter completeness gate ($N, P, K, \text{pH}, T, H, R$) with physical domain boundaries, rejecting partial inputs with canonical clarification prompts and completely eliminating silent ML defaults or zeros.
+- **Decoupled Soil Nutrient & Fertilizer Architecture**: Separated fertilizer management (`soil_nutrient_management`) from crop recommendation, routing queries directly to the General Agent via a shared Integrated Nutrient Management (INM) utility (`agents/shared/fertilizer.py`) with Soil Health Card deficit interpretation and mandatory KVK agronomic disclaimers.
 - **Enterprise Dual-Database Migration**: Successfully executed a production migration from legacy embedded SQLite files to a dual **PostgreSQL** topology (`agri_auth` for identity/sessions via **Prisma ORM**; `agri_memory` for checkpoint state machines via **AsyncPostgresSaver**), eliminating lock contention and guaranteeing ACID durability.
-- **Computer Vision & Retrieval-Augmented Generation (RAG)**: Integrated an image-classification pipeline (MobileNetV2 / EfficientNetB4) with **Qdrant Vector Database** indexing dense domain embeddings (bge-m3) to deliver grounded disease management advice with intent-driven chunk filtering.
-- **Tabular Machine Learning Integration**: Engineered a real-time parameter extraction and inference pipeline wrapping a **scikit-learn Random Forest** model to recommend optimal crops based on 7 environmental variables (N, P, K, pH, rainfall, temperature, humidity).
-- **Zero-Trust Security & Distributed Rate Limiting**: Designed a hardened **Node.js Express Gateway** featuring Argon2 password hashing, short-lived JWTs (15m) with rotating refresh tokens (7d), single-use token blacklisting, and **Redis-backed sliding-window rate limiting** with graceful failover.
+- **Computer Vision & Retrieval-Augmented Generation (RAG)**: Integrated an image-classification pipeline (MobileNetV2 / EfficientNetB4) with **Qdrant Vector Database** indexing dense domain embeddings, enforcing strict pathogen-specific anti-contamination filters during retrieval.
+- **Tabular Machine Learning Integration**: Engineered a real-time inference pipeline wrapping a **scikit-learn Random Forest** model with Top-3 probability ranking and out-of-distribution (OOD) risk analysis.
+- **High-Resilience Multi-Model Fallback**: Designed an automatic LLM failover hierarchy (`openai/gpt-oss-120b` → `openai/gpt-oss-20b`) with exponential-backoff retries and quota-exhaustion classification.
+- **Zero-Trust Security & Distributed Rate Limiting**: Hardened **Node.js Express Gateway** featuring Argon2 password hashing, short-lived JWTs (15m) with rotating refresh tokens (7d), and **Redis-backed sliding-window rate limiting** with graceful failover.
 - **Streaming Real-Time Frontend UI**: Developed a high-performance **React 19 / TypeScript** single-page application utilizing `@assistant-ui/react` runtime adapters, streaming tool-call executions, optimistic state rendering, and zero-flicker theme switching.
 
 ---
@@ -412,7 +415,7 @@ pip install -e .
 # 3. Configure environment
 cp .env.example .env
 # Ensure SESSION_CHECKPOINTER_BACKEND=postgres
-# Ensure SESSION_CHECKPOINT_DATABASE_URL="postgresql://postgres:root@localhost:5432/agri_memory"
+# Ensure SESSION_CHECKPOINT_DATABASE_URL="postgresql://<username>:<password>@localhost:5432/agri_memory"
 # Provide GROQ_API_KEY, TAVILY_API_KEY, and HF_TOKEN
 
 # 4. Launch Qdrant vector database (via local docker compose)
@@ -461,16 +464,25 @@ docker compose -f agent_backend/agents/docker-compose.yml up -d
 The codebase includes end-to-end integration and unit tests covering persistence, security boundaries, and multi-agent execution:
 
 ```bash
-# Run Gateway PostgreSQL integration test suite
+# 1. Run Gateway PostgreSQL & production model tests
 cd gateway
 node tests/test_postgres_gateway.js
+node tests/test_gateway_production_models.js
 
-# Run Agent Backend PostgreSQL persistence test suite
-cd agent_backend
-pytest tests/test_postgres_persistence.py -v
+# 2. Run Agent Backend automated test suites
+cd ../agent_backend
+python tests/test_supervisor_crop_validation.py    # 7-parameter crop input validation gate
+python tests/test_fertilizer_architecture.py       # Fertilizer routing & shared INM module
+python tests/test_agricultural_capabilities.py     # INM, calendar, market prices, schemes
+python tests/test_crop_validation.py               # Crop physical bounds & OOD checks
+python tests/test_context_memory.py                # Multi-turn context memory & overrides
+python tests/test_disease_defects.py               # Disease prompt & mapper defect fixes
+python tests/test_rag_anti_contamination.py        # Pathogen anti-contamination RAG isolation
+python tests/test_security_hardening.py            # Image upload safety & file security
+python tests/test_e2e_scenarios.py                 # 10 end-to-end integration scenarios
 
-# Run Frontend TypeScript & lint verification
-cd frontend
+# 3. Run Frontend TypeScript & lint verification
+cd ../frontend
 npm run build
 npm run lint
 ```

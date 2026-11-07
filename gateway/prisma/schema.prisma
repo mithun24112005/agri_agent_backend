@@ -8,25 +8,34 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  passwordHash  String
-  isActive      Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                  String               @id @default(uuid())
+  email               String               @unique
+  passwordHash        String
+  isActive            Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
   
-  sessions      Session[]
-  refreshTokens RefreshToken[]
+  sessions            Session[]
+  refreshTokens       RefreshToken[]
+  cropRecommendations CropRecommendation[]
+  diseasePredictions  DiseasePrediction[]
+  feedbacks           Feedback[]
+  farmProfiles        FarmProfile[]
 }
 
 model Session {
-  id        String   @id @default(uuid())
-  title     String
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                  String               @id @default(uuid())
+  title               String
+  userId              String
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages            Message[]
+  cropRecommendations CropRecommendation[]
+  diseasePredictions  DiseasePrediction[]
+
+  @@index([userId])
 }
 
 model RefreshToken {
@@ -38,4 +47,107 @@ model RefreshToken {
   revokedAt DateTime?
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Message {
+  id        String     @id @default(uuid())
+  sessionId String
+  role      String     // "user" | "assistant" | "system"
+  content   String
+  metadata  Json?
+  createdAt DateTime   @default(now())
+
+  session   Session    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  agentRuns AgentRun[]
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model AgentRun {
+  id         String   @id @default(uuid())
+  messageId  String
+  agentName  String   // "disease_agent" | "crop_agent" | "general_agent" | "supervisor"
+  durationMs Int?
+  status     String   // "success" | "error" | "timeout"
+  error      String?
+  createdAt  DateTime @default(now())
+
+  message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model CropRecommendation {
+  id              String   @id @default(uuid())
+  userId          String
+  sessionId       String
+  recommendedCrop String
+  confidence      Float?
+  n               Float?
+  p               Float?
+  k               Float?
+  ph              Float?
+  rainfall        Float?
+  temperature     Float?
+  humidity        Float?
+  alternatives    Json?
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session         Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model DiseasePrediction {
+  id             String   @id @default(uuid())
+  userId         String
+  sessionId      String
+  imageKey       String   // Abstract UUID storage key, NOT raw file path
+  predictedClass String
+  confidence     Float?
+  isHealthy      Boolean  @default(false)
+  treatment      Json?
+  createdAt      DateTime @default(now())
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session        Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model Feedback {
+  id        String   @id @default(uuid())
+  userId    String
+  messageId String?
+  rating    Int      // 1 to 5
+  comment   String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model FarmProfile {
+  id           String   @id @default(uuid())
+  userId       String
+  farmName     String
+  location     Json?    // { country, state, district, taluk, village, mandi }
+  soilType     String?
+  primaryCrops String[] @default([])
+  acreage      Float?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

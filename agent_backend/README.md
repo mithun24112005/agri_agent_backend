@@ -47,13 +47,16 @@ Conversations are **session-scoped and persistent**, so a farmer can upload an i
 
 ## ✨ Key Features
 
-- **🧭 Multi-Agent Orchestration** — A central Supervisor classifies intent (`disease`, `crop`, `general`, or `multi_domain`) and selects the right specialist(s). Multi-domain queries fan out to several agents, whose answers are synthesized into one cohesive reply.
-- **🖼️ Disease Agent V2 (Vision + Intent-Driven RAG)** — Intercepts uploaded images via an ML classification service, maps the prediction, and uses a highly optimized **Qdrant** vector pipeline. V2 features semantic section-chunking, rich metadata payload indexing, and an LLM intent classifier to extract exact answers (symptoms, causes, organic/chemical control) with confidence-aware retrieval fallbacks.
-- **🌱 Crop Recommendation Agent** — Extracts agronomic parameters (N, P, K, temperature, humidity, pH, rainfall) from natural language, runs a local **scikit-learn Random Forest** model, and explains *why* the recommended crop fits.
+- **🧭 Multi-Agent Orchestration** — A central Supervisor classifies intent across a 12-intent taxonomy and selects the right specialist(s). Multi-domain queries fan out to several agents, whose answers are synthesized into one cohesive reply.
+- **🛡️ Strict Crop Input Validation Gate** — Enforces mandatory 7-parameter completeness (N, P, K, pH, temperature, humidity, rainfall) with physical domain bounds before invoking the crop recommendation ML pipeline. Incomplete inputs trigger canonical clarification prompts with zero silent defaults or zeros.
+- **🧪 Soil Nutrient & Fertilizer Advisory** — Fertilizer inquiries route exclusively to the General Agent via a shared Integrated Nutrient Management (INM) module (`agents/shared/fertilizer.py`), providing Soil Health Card deficit interpretations, KVK/SAU safety disclaimers, and Package of Practices baseline guidance without triggering crop ML validation.
+- **🖼️ Disease Agent V2 (Vision + Intent-Driven RAG)** — Intercepts uploaded images via an ML classification service, maps the prediction, and uses a highly optimized **Qdrant** vector pipeline with strict pathogen anti-contamination filters, preventing cross-disease leakage.
+- **🌱 Crop Recommendation Agent** — Ingests 7 validated soil/weather parameters, runs a local **scikit-learn Random Forest** model, and explains *why* the recommended crop fits, accompanied by seasonal calendars and candidate crop comparison matrices.
+- **🌾 Advanced Agronomic Suite** — Sowing & harvest crop calendars (`calendar.py`), candidate crop comparator (`comparator.py`), Mandi/MSP price guidance (`market.py`), and official government subsidy databases (`schemes.py`).
 - **🔎 General Agent (Live Web Search)** — Uses **Tavily** to retrieve up-to-date information (market prices, best practices, sustainability) and answers strictly from the gathered evidence.
-- **🧠 Session-Scoped Memory** — PostgreSQL checkpointers persist every conversation turn per `session_id` in `agri_memory`, with structured results (last disease, last crop) carried forward so follow-ups work without re-uploading images.
-- **🛡️ Guardrails** — Built-in **PII sanitization** (names, emails, phones, locations → `[REDACTED]`) and a **domain guardrail** that politely rejects non-agriculture queries.
-- **♻️ Resilience** — Exponential-backoff retry logic wraps LLM calls to absorb transient upstream errors (rate limits, 5xx, tool-choice hiccups).
+- **🧠 Session-Scoped Memory** — PostgreSQL checkpointers persist every conversation turn per `session_id` in `agri_memory`, with multi-turn parameter accumulation and latest-turn value overrides.
+- **🛡️ Guardrails** — Built-in **PII sanitization** (names, emails, phones, personal addresses → `[REDACTED]`, while preserving agricultural locations) and a **domain guardrail** that politely rejects non-agriculture queries.
+- **♻️ LLM Resilience** — Multi-model fallback (`openai/gpt-oss-120b` → `openai/gpt-oss-20b`) and exponential-backoff retries absorb transient upstream errors and daily token quota exhaustion.
 - **📊 Observability** — Optional end-to-end tracing via **LangSmith**.
 
 ---
@@ -203,31 +206,56 @@ Memory balances completeness with the practical limits of an LLM context window.
 ```
 agent_backend/
 ├── main.py                     # FastAPI app + lifespan (checkpointer & graph wiring)
-├── pyproject.toml              # Dependencies (managed by uv)
+├── pyproject.toml              # Dependencies (managed by uv / pip)
 ├── uv.lock                     # Locked dependency versions
 ├── api/
-│   └── routes.py               # POST /chat endpoint
+│   └── routes.py               # POST /chat, GET /health endpoints
 ├── graph/
-│   ├── main_graph.py           # Main orchestration graph (classify → run → format)
+│   ├── main_graph.py           # Main orchestration graph (classify → fan-out → format)
 │   ├── state.py                # Typed state definitions (TypedDict)
-│   └── persistence.py          # PostgreSQL checkpointer factory
+│   └── persistence.py          # PostgreSQL checkpointer factory (AsyncPostgresSaver)
 ├── agents/
-│   ├── supervisor/graph.py     # PII → guardrail → routing
-│   ├── disease/                # Disease agent: graph, classifier, retriever, mapper
-│   ├── crop/                   # Crop agent: graph, retriever
-│   ├── general/graph.py        # General agent (Tavily-grounded)
-│   ├── response/graph.py       # Response synthesis node
+│   ├── supervisor/
+│   │   ├── crop_validator.py   # 7-parameter crop input validation gate
+│   │   ├── graph.py            # 12-intent supervisor routing sub-graph
+│   │   └── guardrail.py        # PII scrubber & agriculture guardrail
+│   ├── shared/
+│   │   └── fertilizer.py       # Reusable Integrated Nutrient Management (INM) advisory
+│   ├── disease/                # Disease agent: vision classifier, RAG retriever, mapper
+│   ├── crop/
+│   │   ├── calendar.py         # Seasonal crop sowing/harvesting calendar
+│   │   ├── comparator.py       # Top candidate crop comparison matrix
+│   │   ├── fertilizer.py       # Backward-compatibility re-export shim
+│   │   ├── graph.py            # LangGraph crop sub-graph definition
+│   │   └── retriever.py        # Qdrant crop agronomy context retriever
+│   ├── general/
+│   │   ├── market.py           # Mandi APMC rates and MSP price guidance
+│   │   ├── schemes.py          # Government agricultural schemes database
+│   │   └── graph.py            # General farming & fertilizer advisory graph
+│   ├── response/graph.py       # Response synthesis & conflict resolution node
 │   ├── notebooks/              # Prototyping notebooks
 │   ├── docker-compose.yml      # Qdrant service definition
 │   ├── models/                 # Random Forest model + encoder (.pkl)   ‹not tracked›
 │   └── diseases/               # Disease knowledge base (.json)          ‹not tracked›
 ├── services/
-│   ├── crop_model.py           # Random Forest feature prep + inference
+│   ├── crop_model.py           # Random Forest feature prep, physical bounds & inference
+│   ├── image_quality.py        # Image resolution and Laplacian blur variance analysis
 │   ├── image_storage.py        # Durable upload storage + history data URLs
-│   └── disease_detection/      # External disease detection service
-├── schemas/                    # Pydantic request/response models
+│   ├── storage_manager.py      # Upload hygiene, size limits, and traversal protection
+│   └── disease_detection/      # Disease detection client & exception definitions
 ├── config/
+│   ├── llm_resilience.py       # Multi-model fallback (120b -> 20b) & quota classification
 │   └── settings.py             # pydantic-settings configuration
+├── tests/                      # Automated unit and integration test suites
+│   ├── test_supervisor_crop_validation.py # Supervisor 7-parameter crop validation
+│   ├── test_fertilizer_architecture.py    # Fertilizer routing & shared INM module
+│   ├── test_agricultural_capabilities.py  # INM, calendar, market, and schemes
+│   ├── test_crop_validation.py            # Crop physical bounds & OOD validation
+│   ├── test_context_memory.py             # Multi-turn context memory & overrides
+│   ├── test_disease_defects.py            # Disease prompt & mapper defect fixes
+│   ├── test_rag_anti_contamination.py     # Pathogen anti-contamination RAG isolation
+│   ├── test_security_hardening.py         # Image safety & storage security
+│   └── test_e2e_scenarios.py              # 10 end-to-end integration scenarios
 ├── assets/                     # Sample images (e.g. AppleScab1.JPG)
 ├── storage/                    # Image uploads durable storage ‹not tracked›
 ├── Working.md                  # Memory model documentation
@@ -320,7 +348,7 @@ DISEASE_CONFIDENCE_THRESHOLD=0.50
 
 # ── Session memory (defaults shown) ──────────────────────
 SESSION_CHECKPOINTER_BACKEND=postgres
-SESSION_CHECKPOINT_DATABASE_URL=postgresql://postgres:root@localhost:5432/agri_memory
+SESSION_CHECKPOINT_DATABASE_URL=postgresql://<username>:<password>@localhost:5432/agri_memory
 MAX_CONVERSATION_MESSAGES=20
 
 # ── Optional ─────────────────────────────────────────────
@@ -435,19 +463,40 @@ curl -X POST http://127.0.0.1:8001/chat \
 
 ---
 
-## 🧪 Testing
+## 🧪 Automated Testing
 
-The [`Testing.md`](./Testing.md) guide walks through manual verification scenarios, including:
+The backend includes a comprehensive suite of automated tests verifying core domain logic, safety gates, and resilience:
 
-- Health check
-- Disease follow-ups that reuse memory (no re-upload)
-- Crop recommendation from parameters
-- Multi-agent routing (e.g. market price + crop recommendation)
-- Guardrail rejection of off-topic queries
-- Cross-session isolation
-- Persistence across server restarts
+```bash
+# Supervisor 7-parameter crop input validation (missing inputs, overrides, multi-turn)
+python tests/test_supervisor_crop_validation.py
 
-A sample image is provided at [`assets/AppleScab1.JPG`](./assets/AppleScab1.JPG) for quick testing.
+# Fertilizer routing isolation & shared INM advisory module
+python tests/test_fertilizer_architecture.py
+
+# Advanced agronomic capabilities (INM, calendar, market prices, schemes)
+python tests/test_agricultural_capabilities.py
+
+# Crop model physical boundaries & out-of-distribution (OOD) checks
+python tests/test_crop_validation.py
+
+# Multi-turn context memory accumulation and reset behavior
+python tests/test_context_memory.py
+
+# Plant disease defect regression tests
+python tests/test_disease_defects.py
+
+# Pathogen anti-contamination RAG isolation
+python tests/test_rag_anti_contamination.py
+
+# Image upload safety, MIME validation, and file security
+python tests/test_security_hardening.py
+
+# End-to-end integration scenarios (all 10 workflows)
+python tests/test_e2e_scenarios.py
+```
+
+The [`Testing.md`](./Testing.md) guide also walks through manual verification scenarios. A sample image is provided at [`assets/AppleScab1.JPG`](./assets/AppleScab1.JPG) for quick testing.
 
 ---
 

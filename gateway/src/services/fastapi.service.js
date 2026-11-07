@@ -14,7 +14,7 @@ const apiClient = axios.create({
 /**
  * Forward chat request to FastAPI
  */
-const proxyChatRequest = async (query, sessionId, file, requestId) => {
+const proxyChatRequest = async (query, sessionId, file, requestId, userId) => {
   try {
     const form = new FormData();
     form.append('query', query);
@@ -30,7 +30,8 @@ const proxyChatRequest = async (query, sessionId, file, requestId) => {
     const response = await apiClient.post('/chat', form, {
       headers: {
         ...form.getHeaders(),
-        'X-Request-ID': requestId // correlate logs
+        'X-Request-ID': requestId, // correlate logs
+        ...(userId ? { 'X-User-ID': userId } : {})
       },
       // Do NOT retry automatically since /chat is stateful (LangGraph)
     });

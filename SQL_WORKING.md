@@ -1005,10 +1005,10 @@ A long-lived, heavily used deployment will accumulate checkpoints and images ind
 
 ```bash
 # Authentication database
-psql "postgresql://postgres:postgres@localhost:5432/agri_auth"
+psql "postgresql://<username>:<password>@localhost:5432/agri_auth"
 
 # Conversation memory database
-psql "postgresql://postgres:postgres@localhost:5432/agri_memory"
+psql "postgresql://<username>:<password>@localhost:5432/agri_memory"
 ```
 
 Adjust the username, password, host, and port to match your `.env` files.

@@ -1,9 +1,11 @@
 import uuid
+import hashlib
 from typing import List, Dict, Tuple
 from agents.disease.models import NormalizedDisease, DiseaseChunk, SectionType, ContentType
 
 def build_identity_header(disease: NormalizedDisease, topic: str) -> str:
-    lines = [f"Disease: {disease.disease_name}"]
+    lines = [f"[Ref: PlantVillage / Plantix | Disease: {disease.disease_name}]"]
+    lines.append(f"Disease: {disease.disease_name}")
     if disease.crop:
         lines.append(f"Crop: {disease.crop.title()}")
     if disease.disease_category:
@@ -32,7 +34,9 @@ def generate_semantic_chunks(disease: NormalizedDisease) -> List[DiseaseChunk]:
             header = build_identity_header(disease, title)
             text = f"{header}\n{title} for {disease.disease_name}:\n{content}"
             
-            chunk_id = f"{disease.disease_id}::{sec_type.value}"
+            # Content-hash chunk identifier for deterministic deduplication
+            content_hash = hashlib.sha256(f"{disease.disease_id}::{sec_type.value}::{content.strip()}".encode()).hexdigest()[:12]
+            chunk_id = f"{disease.disease_id}::{sec_type.value}::{content_hash}"
             
             chunks.append(DiseaseChunk(
                 chunk_id=chunk_id,
@@ -51,7 +55,6 @@ def generate_semantic_chunks(disease: NormalizedDisease) -> List[DiseaseChunk]:
     # Handle Environment specifically
     if disease.environment:
         env = disease.environment
-        # Check if there's substantial info. If only 'season' is present, skip creating a chunk.
         meaningful_keys = [k for k, v in env.items() if k != "season" and v]
         if meaningful_keys:
             title = "Environment Conditions"
@@ -61,7 +64,8 @@ def generate_semantic_chunks(disease: NormalizedDisease) -> List[DiseaseChunk]:
             env_text = "\n".join(env_text_parts)
             
             text = f"{header}\n{title} for {disease.disease_name}:\n{env_text}"
-            chunk_id = f"{disease.disease_id}::environment"
+            content_hash = hashlib.sha256(f"{disease.disease_id}::environment::{env_text.strip()}".encode()).hexdigest()[:12]
+            chunk_id = f"{disease.disease_id}::environment::{content_hash}"
             
             chunks.append(DiseaseChunk(
                 chunk_id=chunk_id,

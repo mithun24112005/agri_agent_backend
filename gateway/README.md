@@ -52,7 +52,7 @@ PORT=3001
 FRONTEND_ORIGIN=http://localhost:5173
 
 # Database Configuration (PostgreSQL agri_auth)
-DATABASE_URL="postgresql://postgres:root@localhost:5432/agri_auth?schema=public"
+DATABASE_URL="postgresql://<username>:<password>@localhost:5432/agri_auth?schema=public"
 
 # JWT Configuration
 JWT_ACCESS_SECRET=your_super_secret_jwt_key_here
@@ -114,3 +114,13 @@ npm start
 ### Health Routes
 * `GET /health`: Check gateway process health.
 * `GET /health/ready`: Check gateway readiness.
+
+## 🧪 Testing
+
+```bash
+# Run PostgreSQL authentication and session isolation tests
+node tests/test_postgres_gateway.js
+
+# Run production Prisma models (ChatMessage, UserFeedback, SystemLog) tests
+node tests/test_gateway_production_models.js
+```

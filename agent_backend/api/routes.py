@@ -14,10 +14,16 @@ from services.disease_detection.exceptions import (
 import os
 from services.image_storage import image_as_data_url, remove_stored_image, save_uploaded_image
 
-async def verify_internal_api_key(x_internal_api_key: str = Header(...)):
+async def verify_internal_api_key(
+    x_internal_api_key: Optional[str] = Header(None),
+    x_user_id: Optional[str] = Header(None)
+):
     expected = os.getenv("INTERNAL_API_SECRET")
-    if not expected or x_internal_api_key != expected:
-        raise HTTPException(status_code=403, detail="Forbidden: Invalid internal API key")
+    if not expected or not x_internal_api_key or x_internal_api_key != expected:
+        raise HTTPException(
+            status_code=401,
+            detail={"error": {"code": "UNAUTHORIZED", "message": "Invalid or missing internal API key"}}
+        )
 
 chat_router = APIRouter(dependencies=[Depends(verify_internal_api_key)])
 

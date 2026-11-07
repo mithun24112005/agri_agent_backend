@@ -13,6 +13,13 @@ class Message(TypedDict):
 # Agent Specific States
 # ==========================================
 
+def merge_dict(a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Reducer function to merge dictionaries in LangGraph parallel fan-out."""
+    res = dict(a) if a else {}
+    if b:
+        res.update(b)
+    return res
+
 class SupervisorState(TypedDict):
     user_query: str
     sanitized_query: Optional[str]
@@ -24,6 +31,12 @@ class SupervisorState(TypedDict):
     response: Optional[str]
     conversation_context: Optional[str]
     has_image: Optional[bool]
+    confidence: Optional[float]
+    requires_image: Optional[bool]
+    requires_structured_input: Optional[bool]
+    missing_parameters: Optional[List[str]]
+    requires_clarification: Optional[bool]
+    clarification_prompt: Optional[str]
 
 class DiseaseState(TypedDict):
     image_path: Optional[str]
@@ -75,9 +88,19 @@ class MainAgentState(TypedDict):
     selected_agents: List[str]
     is_valid: bool
     guardrail_reason: Optional[str]
+    confidence: Optional[float]
+    requires_image: Optional[bool]
+    requires_structured_input: Optional[bool]
+    missing_parameters: Optional[List[str]]
+    requires_clarification: Optional[bool]
+    clarification_prompt: Optional[str]
+    validated_crop_parameters: Optional[Dict[str, float]]
     
-    # Results from executed agents
-    agent_responses: Dict[str, Any]
+    # Context across turns
+    agricultural_context: Optional[Dict[str, Any]]
+    
+    # Results from executed agents (with merge_dict reducer for parallel execution)
+    agent_responses: Annotated[Dict[str, Any], merge_dict]
     disease_result: Optional[Dict[str, Any]]
     crop_result: Optional[Dict[str, Any]]
     general_result: Optional[Dict[str, Any]]
