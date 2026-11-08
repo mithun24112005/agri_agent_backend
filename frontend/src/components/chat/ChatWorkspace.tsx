@@ -1,10 +1,47 @@
-import { Menu, Sprout } from "lucide-react";
 import { useAuiState } from "@assistant-ui/react";
 import { AgriThread } from "@/components/assistant-ui/Thread";
 
-interface ChatWorkspaceProps { onOpenSidebar: () => void; }
+export function ChatWorkspace() {
+  const activeTitle = useAuiState(
+    (state) =>
+      state.threads.threadItems.find((item) => item.id === state.threads.mainThreadId)?.title ??
+      "New conversation"
+  );
 
-export function ChatWorkspace({ onOpenSidebar }: ChatWorkspaceProps) {
-  const activeTitle = useAuiState((state) => state.threads.threadItems.find((item) => item.id === state.threads.mainThreadId)?.title ?? "New conversation");
-  return <section className="chat-workspace"><header className="topbar"><button className="mobile-menu" onClick={onOpenSidebar} aria-label="Open sidebar"><Menu size={18} /></button><div className="conversation-title"><span className="title-dot" /><span>{activeTitle}</span></div></header><div className="conversation-main"><div className="conversation-kicker"><Sprout size={14} /> CropSage assistant</div><AgriThread /></div></section>;
+  return (
+    <section className="chat-workspace" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {/* Sub-bar for conversation title and session state */}
+      <div
+        className="conversation-topbar"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "10px 24px",
+          borderBottom: "1px solid var(--color-border-subtle)",
+          backgroundColor: "var(--color-surface)",
+          fontSize: "13px",
+          color: "var(--color-text-secondary)",
+          flexShrink: 0,
+        }}
+      >
+        <span
+          style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "50%",
+            backgroundColor: "var(--color-accent)",
+          }}
+        />
+        <span style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{activeTitle}</span>
+        <span style={{ fontSize: "11px", color: "var(--color-text-tertiary)", marginLeft: "auto" }}>
+          Active Session
+        </span>
+      </div>
+
+      <div className="conversation-main" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <AgriThread />
+      </div>
+    </section>
+  );
 }

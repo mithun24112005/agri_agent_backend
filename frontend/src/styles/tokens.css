@@ -1,0 +1,93 @@
+/* CropSage / Mobbin-inspired design tokens. Keep the interface quiet so the work stays in focus. */
+:root {
+  --color-canvas: #FFFFFF;
+  --color-surface: #FFFFFF;
+  --color-surface-hover: #F3F3F3;
+  --color-sunken: #F0F0F0;
+  --color-border-subtle: #F0F0F0;
+  --color-border-strong: #E0E0E0;
+
+  --color-text-primary: #141414;
+  --color-text-secondary: #707070;
+  --color-text-tertiary: #ADADAD;
+  --color-text-inverse: #FFFFFF;
+
+  --color-accent: #0066FF;
+  --color-accent-hover: #0057D9;
+  --color-accent-subtle: #F3F3F3;
+  --color-accent-border: #E0E0E0;
+  --color-accent-contrast: #FFFFFF;
+  --button-primary-background: #141414;
+  --button-primary-foreground: #FFFFFF;
+
+  --color-agent-crop: #0F6B66;
+  --color-agent-crop-bg: #E6F4F2;
+  --color-agent-disease: #7A3E65;
+  --color-agent-disease-bg: #F5EBF1;
+  --color-agent-general: #3B5998;
+  --color-agent-general-bg: #EDF2FA;
+
+  --color-status-success: #027A48;
+  --color-status-success-bg: #ECFDF3;
+  --color-status-warning: #B54708;
+  --color-status-warning-bg: #FFFAEB;
+  --color-status-error: #B42318;
+  --color-status-error-bg: #FEF3F2;
+  --color-status-info: #026AA2;
+  --color-status-info-bg: #F0F9FF;
+
+  --font-sans: "Saans", "Helvetica Neue", Arial, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --radius-sm: 16px;
+  --radius-md: 24px;
+  --radius-lg: 24px;
+  --radius-full: 9999px;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+}
+
+.dark, [data-theme="dark"] {
+  --color-canvas: #141414;
+  --color-surface: #1C1C1C;
+  --color-surface-hover: #252525;
+  --color-sunken: #101010;
+  --color-border-subtle: #2A2A2A;
+  --color-border-strong: #3A3A3A;
+
+  --color-text-primary: #F5F5F5;
+  --color-text-secondary: #A7A7A7;
+  --color-text-tertiary: #777777;
+  --color-text-inverse: #141414;
+
+  --color-accent: #5B9BFF;
+  --color-accent-hover: #82B3FF;
+  --color-accent-subtle: #252525;
+  --color-accent-border: #3A3A3A;
+  --color-accent-contrast: #141414;
+  --button-primary-background: #F5F5F5;
+  --button-primary-foreground: #141414;
+
+  --color-agent-crop: #5FC2B9;
+  --color-agent-crop-bg: #163331;
+  --color-agent-disease: #C482AC;
+  --color-agent-disease-bg: #301927;
+  --color-agent-general: #82A0D8;
+  --color-agent-general-bg: #182238;
+
+  --color-status-success: #32D583;
+  --color-status-success-bg: #053321;
+  --color-status-warning: #FDB022;
+  --color-status-warning-bg: #4E2E07;
+  --color-status-error: #F97066;
+  --color-status-error-bg: #55160C;
+  --color-status-info: #70B8F9;
+  --color-status-info-bg: #0B2A4A;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+}
+

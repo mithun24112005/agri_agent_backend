@@ -21,6 +21,43 @@ function getImageFile(message: ThreadMessage): File | undefined {
   return undefined;
 }
 
+function splitResponseIntoChunks(text: string): string[] {
+  const tokens = text.match(/\S+\s*/g) ?? [text];
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const token of tokens) {
+    current += token;
+    if (current.length >= 28 || /\n\s*$/.test(token)) {
+      chunks.push(current);
+      current = "";
+    }
+  }
+
+  if (current) chunks.push(current);
+  return chunks.length > 0 ? chunks : [text];
+}
+
+function waitForStreamTick(signal: AbortSignal, milliseconds: number) {
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 let activeOrPendingSessionId: string | null = null;
 
 export function setActiveSessionId(sessionId: string | null) {
@@ -51,34 +88,35 @@ export const gatewayModelAdapter: ChatModelAdapter = {
 
     const metadata = { custom: { selected_agents: [], agent_responses: {} } };
 
-    // 1. Initial running tool call while LangGraph backend is processing
-    const initialRoutingPart: ThreadAssistantMessagePart = {
-      type: "tool-call",
-      toolCallId: `call-${Date.now()}-routing`,
-      toolName: "routing",
-      args: { query },
-      argsText: JSON.stringify({ query }),
+    // 1. Initial pending state for natural assistant loading indicator
+    yield {
+      content: [
+        {
+          type: "text",
+          text: "",
+          status: { type: "running" },
+        },
+      ],
+      metadata,
     };
-    yield { content: [initialRoutingPart], metadata };
 
     // 2. Fetch response from gateway API
     const result = await chatApi.send(query, sessionId, getImageFile(userMessage), abortSignal);
 
-    // 3. Extract agents and responses
+    // 3. Extract genuinely invoked agents
     const selectedAgents = (
       result.selected_agents && result.selected_agents.length > 0
         ? result.selected_agents
         : Object.keys(result.agent_responses || {})
     ).filter(Boolean);
 
-    const agentsToDisplay = selectedAgents.length > 0 ? selectedAgents : ["general_agent"];
     const custom = {
-      selected_agents: agentsToDisplay,
+      selected_agents: selectedAgents,
       agent_responses: result.agent_responses || {},
     };
 
-    // 4. Construct completed tool parts for all invoked agents
-    const toolParts: ThreadAssistantMessagePart[] = agentsToDisplay.map((agent, index) => ({
+    // 4. Construct tool parts only for genuinely invoked specialist agents
+    const toolParts: ThreadAssistantMessagePart[] = selectedAgents.map((agent, index) => ({
       type: "tool-call",
       toolCallId: `call-${Date.now()}-${index}-${agent}`,
       toolName: agent,
@@ -94,44 +132,24 @@ export const gatewayModelAdapter: ChatModelAdapter = {
     );
     const responseText = rawResponse || fallbackResponse || "Analysis completed.";
 
-    // 6. Smooth progressive streaming of response text
-    const chunkSize = 24;
-    if (responseText.length <= chunkSize) {
-      yield {
-        content: [
-          ...toolParts,
-          {
-            type: "text",
-            text: responseText,
-            status: { type: "complete" },
-          },
-        ],
-        metadata: { custom },
-      };
-    } else {
-      for (let i = chunkSize; i < responseText.length; i += chunkSize) {
-        if (abortSignal.aborted) throw new DOMException("The response was stopped.", "AbortError");
-        yield {
-          content: [
-            ...toolParts,
-            {
-              type: "text",
-              text: responseText.slice(0, i),
-              status: { type: "running" },
-            },
-          ],
-          metadata: { custom },
-        };
-        await new Promise((resolve) => setTimeout(resolve, 14));
-      }
+    // 6. Reveal the completed API response progressively through assistant-ui.
+    // The gateway remains request/response based; this only improves perceived continuity.
+    let streamedText = "";
+    const chunks = splitResponseIntoChunks(responseText);
+
+    for (const [index, chunk] of chunks.entries()) {
+      if (abortSignal.aborted) return;
+      streamedText += chunk;
+      await waitForStreamTick(abortSignal, index === 0 ? 80 : 24);
+      if (abortSignal.aborted) return;
 
       yield {
         content: [
           ...toolParts,
           {
             type: "text",
-            text: responseText,
-            status: { type: "complete" },
+            text: streamedText,
+            status: { type: index === chunks.length - 1 ? "complete" : "running" },
           },
         ],
         metadata: { custom },

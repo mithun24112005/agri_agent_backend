@@ -1,4 +1,5 @@
 import type { AuthTokens, GatewayErrorPayload } from "@/types/api";
+import { formatErrorMessage } from "./errors";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001").replace(/\/$/, "");
 const ACCESS_TOKEN_KEY = "agrimind.access-token";
@@ -67,14 +68,7 @@ async function refreshAccessToken(): Promise<AuthTokens> {
 }
 
 function getErrorMessage(status: number, payload: GatewayErrorPayload | null): string {
-  if (status === 413) return "That image is too large. The maximum size is 5 MB.";
-  if (status === 429) return "You’re sending requests too quickly. Please try again in a moment.";
-  if (status === 503) return "The gateway is temporarily unavailable. Please try again shortly.";
-  if (status === 504) return "The agriculture assistant took too long to respond. Please try again.";
-  if (status === 502) return "The agriculture assistant is temporarily unavailable.";
-  if (status === 401) return "Your session has expired. Please sign in again.";
-  if (status === 403) return "You don’t have permission to do that.";
-  return payload?.error?.message ?? payload?.detail ?? payload?.message ?? "Something went wrong. Please try again.";
+  return formatErrorMessage(status, payload);
 }
 
 async function request<T>(path: string, options: RequestInit = {}, retryOnUnauthorized = true): Promise<T> {
@@ -91,7 +85,9 @@ async function request<T>(path: string, options: RequestInit = {}, retryOnUnauth
     throw new ApiError("We couldn’t reach the gateway. Check that the backend is running.", 0, "NETWORK_ERROR");
   }
 
-  if (response.status === 401 && retryOnUnauthorized && path !== "/api/auth/refresh") {
+  // Only attempt token refresh on authenticated protected routes (not auth endpoints)
+  const isAuthRoute = path.startsWith("/api/auth/");
+  if (response.status === 401 && retryOnUnauthorized && !isAuthRoute) {
     try {
       if (!refreshPromise) refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
       await refreshPromise;

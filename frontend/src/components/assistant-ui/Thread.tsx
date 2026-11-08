@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -26,6 +26,9 @@ import {
   Paperclip,
   Square,
   X,
+  Wheat,
+  Microscope,
+  MessageSquareText,
 } from "lucide-react";
 import { EmptyState } from "@/components/chat/EmptyState";
 import { useAttachmentError } from "@/lib/runtime/attachments";
@@ -47,18 +50,25 @@ function ImagePart({ image, filename }: ImageMessagePartProps) {
   return <img className="message-image" src={image} alt={filename ?? "Attached plant image"} />;
 }
 
-const agentStepTitles: Record<string, string> = {
-  disease_agent: "Diagnosed plant health and disease indicators",
-  crop_agent: "Evaluated crop suitability and soil conditions",
-  general_agent: "Synthesized agronomic advisory notes",
-  routing: "Routing question to specialized field agents",
-};
-
-const agentLabels: Record<string, string> = {
-  disease_agent: "Disease Diagnosis Agent",
-  crop_agent: "Crop Advisory Agent",
-  general_agent: "General Agriculture Agent",
-  routing: "Field Supervisor",
+const agentMeta: Record<string, { label: string; title: string; color: string; icon: typeof Wheat }> = {
+  crop_agent: {
+    label: "Crop Recommendation Specialist",
+    title: "Evaluated crop suitability and soil fertility",
+    color: "var(--color-agent-crop)",
+    icon: Wheat,
+  },
+  disease_agent: {
+    label: "Plant Pathology Specialist",
+    title: "Diagnosed plant foliage health & pathogens",
+    color: "var(--color-agent-disease)",
+    icon: Microscope,
+  },
+  general_agent: {
+    label: "General Agricultural Specialist",
+    title: "Synthesized agronomic advisory & fertilizer guidance",
+    color: "var(--color-agent-general)",
+    icon: MessageSquareText,
+  },
 };
 
 function ActivityReasoning({ text }: ReasoningMessagePartProps) {
@@ -69,8 +79,13 @@ function ActivityReasoning({ text }: ReasoningMessagePartProps) {
 function ActivityTool({ toolName, args, result, status }: ToolCallMessagePartProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const running = status.type === "running";
-  const title = agentStepTitles[toolName] ?? toolName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  const agentLabel = agentLabels[toolName] ?? toolName;
+  const meta = agentMeta[toolName] ?? {
+    label: toolName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    title: toolName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    color: "var(--color-accent)",
+    icon: CircleCheck,
+  };
+  const Icon = meta.icon;
 
   const queryText = typeof args?.query === "string" ? args.query : "";
   const resultText = typeof result === "string" ? result : result ? JSON.stringify(result, null, 2) : "";
@@ -82,15 +97,25 @@ function ActivityTool({ toolName, args, result, status }: ToolCallMessagePartPro
         className="chain-step-header"
         onClick={() => setIsExpanded((prev) => !prev)}
         aria-expanded={isExpanded}
+        style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}
       >
+        <span
+          style={{
+            width: "7px",
+            height: "7px",
+            borderRadius: "50%",
+            backgroundColor: meta.color,
+            flexShrink: 0,
+          }}
+        />
         <span className="chain-step-icon">
           {running ? (
             <LoaderCircle size={14} className="animate-spin spin" />
           ) : (
-            <CircleCheck size={14} />
+            <Icon size={14} style={{ color: meta.color }} />
           )}
         </span>
-        <span className="chain-step-title">{title}</span>
+        <span className="chain-step-title">{meta.title}</span>
         <ChevronDown
           size={13}
           className={`chain-step-chevron ${isExpanded ? "expanded" : ""}`}
@@ -99,7 +124,19 @@ function ActivityTool({ toolName, args, result, status }: ToolCallMessagePartPro
 
       {isExpanded && (
         <div className="chain-step-details">
-          <div className="chain-step-badge">{agentLabel}</div>
+          <div
+            className="chain-step-badge"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              color: meta.color,
+              fontWeight: 600,
+            }}
+          >
+            <Icon size={13} />
+            <span>{meta.label}</span>
+          </div>
           {queryText && (
             <div className="chain-step-block">
               <span className="chain-step-label">Query</span>
@@ -108,7 +145,7 @@ function ActivityTool({ toolName, args, result, status }: ToolCallMessagePartPro
           )}
           {resultText && (
             <div className="chain-step-block">
-              <span className="chain-step-label">Findings</span>
+              <span className="chain-step-label">Specialist Response</span>
               <div className="chain-step-output">{resultText}</div>
             </div>
           )}
@@ -210,30 +247,100 @@ function Composer() {
 }
 
 export function AgriThread() {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const scrollAnimationRef = useRef<number | null>(null);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const updateScrollState = () => {
+      const remainingDistance = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+      setShowScrollToBottom(remainingDistance > 24);
+    };
+
+    updateScrollState();
+    viewport.addEventListener("scroll", updateScrollState, { passive: true });
+    const cancelScrollAnimation = () => {
+      if (scrollAnimationRef.current === null) return;
+      cancelAnimationFrame(scrollAnimationRef.current);
+      scrollAnimationRef.current = null;
+    };
+    viewport.addEventListener("pointerdown", cancelScrollAnimation);
+
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateScrollState);
+    resizeObserver?.observe(viewport);
+    const mutationObserver = typeof MutationObserver === "undefined" ? null : new MutationObserver(updateScrollState);
+    mutationObserver?.observe(viewport, { childList: true, subtree: true, characterData: true });
+
+    return () => {
+      viewport.removeEventListener("scroll", updateScrollState);
+      viewport.removeEventListener("pointerdown", cancelScrollAnimation);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      cancelScrollAnimation();
+    };
+  }, []);
+
+  const scrollToBottom = () => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    if (scrollAnimationRef.current !== null) cancelAnimationFrame(scrollAnimationRef.current);
+
+    const startTop = viewport.scrollTop;
+    const targetTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+    const distance = targetTop - startTop;
+    if (Math.abs(distance) < 1) return;
+
+    const duration = Math.min(760, Math.max(360, Math.abs(distance) * 0.7));
+    const startedAt = performance.now();
+    const animate = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      viewport.scrollTop = startTop + distance * easedProgress;
+
+      if (progress < 1) {
+        scrollAnimationRef.current = requestAnimationFrame(animate);
+      } else {
+        scrollAnimationRef.current = null;
+      }
+    };
+
+    scrollAnimationRef.current = requestAnimationFrame(animate);
+  };
+
   return (
     <ThreadPrimitive.Root className="thread-root">
-      <ThreadPrimitive.Viewport
-        className="thread-viewport"
-        turnAnchor="bottom"
-        autoScroll={true}
-        scrollToBottomOnRunStart={true}
-      >
-        <ThreadPrimitive.Empty>
-          <EmptyState />
-        </ThreadPrimitive.Empty>
-        <div className="message-list">
-          <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
-        </div>
-        <div className="scroll-to-bottom-anchor">
-          <ThreadPrimitive.ScrollToBottom
-            className="scroll-button"
-            behavior="smooth"
-            aria-label="Scroll to latest message"
-          >
-            <ArrowDown size={16} strokeWidth={2.2} />
-          </ThreadPrimitive.ScrollToBottom>
-        </div>
-      </ThreadPrimitive.Viewport>
+      <div className="thread-viewport-shell">
+        <ThreadPrimitive.Viewport
+          ref={viewportRef}
+          className="thread-viewport"
+          turnAnchor="bottom"
+          autoScroll={true}
+          scrollToBottomOnRunStart={true}
+        >
+          <ThreadPrimitive.Empty>
+            <EmptyState />
+          </ThreadPrimitive.Empty>
+          <div className="message-list">
+            <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
+          </div>
+        </ThreadPrimitive.Viewport>
+        {showScrollToBottom && (
+          <div className="scroll-to-bottom-anchor">
+            <button
+              type="button"
+              className="scroll-button"
+              onClick={scrollToBottom}
+              aria-label="Scroll to latest message"
+            >
+              <ArrowDown size={16} strokeWidth={2.2} />
+            </button>
+          </div>
+        )}
+      </div>
       <Composer />
     </ThreadPrimitive.Root>
   );
